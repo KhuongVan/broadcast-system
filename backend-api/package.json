@@ -1,0 +1,37 @@
+{
+  "name": "broadcast-demo-admin",
+  "version": "1.0.0",
+  "description": "Demo he thong truyen thanh xa voi NestJS, MediaMTX, HLS va cached playback.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "test": "npm run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/platform-express": "^11.1.9",
+    "@nestjs/platform-socket.io": "^11.1.9",
+    "@nestjs/websockets": "^11.1.9",
+    "@supabase/supabase-js": "^2.107.0",
+    "dotenv": "^17.4.2",
+    "multer": "^2.1.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.12",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^25.9.1",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3"
+  }
+}

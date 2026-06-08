@@ -1,0 +1,42 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    ports:
+      - "8888:8888" # HLS
+    expose:
+      - "8554" # RTSP nội bộ cho FFmpeg trong service app
+    restart: always
+
+  app:
+    build: .
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      RTSP_HOST: mediamtx
+      RTSP_PORT: 8554
+      STREAM_PATH: loacuaxa
+      PUBLIC_HLS_BASE_URL: ${PUBLIC_HLS_BASE_URL:-}
+      HLS_READY_TIMEOUT_MS: ${HLS_READY_TIMEOUT_MS:-20000}
+      FFMPEG_RECONNECT_DELAY_MAX_SECONDS: ${FFMPEG_RECONNECT_DELAY_MAX_SECONDS:-5}
+      SCHEDULE_STREAM_RESTART_MAX_ATTEMPTS: ${SCHEDULE_STREAM_RESTART_MAX_ATTEMPTS:-3}
+      SCHEDULE_STREAM_RESTART_DELAY_MS: ${SCHEDULE_STREAM_RESTART_DELAY_MS:-5000}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_AUDIO_BUCKET: ${SUPABASE_AUDIO_BUCKET:-broadcast-audio}
+      SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-3600}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-86400}
+      TTS_PROVIDER: ${TTS_PROVIDER:-fpt}
+      FPT_TTS_API_KEY: ${FPT_TTS_API_KEY:-}
+      FPT_TTS_DEFAULT_VOICE: ${FPT_TTS_DEFAULT_VOICE:-banmai}
+      FPT_TTS_SPEED: ${FPT_TTS_SPEED:-0}
+      FPT_TTS_FORMAT: ${FPT_TTS_FORMAT:-mp3}
+      FPT_TTS_POLL_ATTEMPTS: ${FPT_TTS_POLL_ATTEMPTS:-30}
+      FPT_TTS_POLL_DELAY_MS: ${FPT_TTS_POLL_DELAY_MS:-5000}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      - mediamtx
+    restart: always
