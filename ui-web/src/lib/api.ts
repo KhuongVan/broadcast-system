@@ -1,0 +1,157 @@
+import type {
+  AudioFile,
+  Device,
+  DeviceInput,
+  Playlist,
+  Schedule,
+  ScheduleInput,
+  Session,
+  TtsGenerateInput,
+  TtsVoicesResponse,
+} from './types';
+
+type ApiOptions = RequestInit & {
+  json?: unknown;
+};
+
+async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  const headers = new Headers(options.headers);
+  let body = options.body;
+
+  if (options.json !== undefined) {
+    headers.set('Content-Type', 'application/json');
+    body = JSON.stringify(options.json);
+  }
+
+  const response = await fetch(path, {
+    ...options,
+    headers,
+    body,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const message = await readError(response);
+    throw new Error(message || `Request failed with status ${response.status}`);
+  }
+
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+async function readError(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json().catch(() => null);
+    return payload?.message || payload?.error || '';
+  }
+
+  return response.text().catch(() => '');
+}
+
+export const adminApi = {
+  me: () => api<Session>('/api/auth/me'),
+  login: (username: string, password: string) =>
+    api<{ authenticated: true }>('/api/auth/login', {
+      method: 'POST',
+      json: { username, password },
+    }),
+  logout: () =>
+    api<{ authenticated: false }>('/api/auth/logout', {
+      method: 'POST',
+    }),
+  listFiles: () => api<{ files: AudioFile[] }>('/api/files'),
+  uploadFile: (file: File) => {
+    const formData = new FormData();
+    formData.append('mp3', file);
+    return api<AudioFile & { success: true; path: string }>('/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  listPlaylists: () => api<{ playlists: Playlist[] }>('/api/playlists'),
+  createPlaylist: (name: string) =>
+    api<{ playlist: Playlist }>('/api/playlists', {
+      method: 'POST',
+      json: { name },
+    }),
+  getPlaylist: (playlistId: string) => api<{ playlist: Playlist }>(`/api/playlists/${playlistId}`),
+  updatePlaylist: (playlistId: string, name: string) =>
+    api<{ playlist: Playlist }>(`/api/playlists/${playlistId}`, {
+      method: 'PUT',
+      json: { name },
+    }),
+  deletePlaylist: (playlistId: string) =>
+    api<{ success: true }>(`/api/playlists/${playlistId}`, {
+      method: 'DELETE',
+    }),
+  addPlaylistItem: (playlistId: string, fileId: string) =>
+    api<{ playlist: Playlist }>(`/api/playlists/${playlistId}/items`, {
+      method: 'POST',
+      json: { fileId },
+    }),
+  deletePlaylistItem: (playlistId: string, playlistItemId: string) =>
+    api<{ success: true }>(`/api/playlists/${playlistId}/items/${playlistItemId}`, {
+      method: 'DELETE',
+    }),
+  listSchedules: () => api<{ schedules: Schedule[] }>('/api/schedules'),
+  createSchedule: (schedule: ScheduleInput) =>
+    api<{ schedule: Schedule }>('/api/schedules', {
+      method: 'POST',
+      json: schedule,
+    }),
+  updateSchedule: (scheduleId: string, schedule: ScheduleInput) =>
+    api<{ schedule: Schedule }>(`/api/schedules/${scheduleId}`, {
+      method: 'PUT',
+      json: schedule,
+    }),
+  deleteSchedule: (scheduleId: string) =>
+    api<{ success: true }>(`/api/schedules/${scheduleId}`, {
+      method: 'DELETE',
+    }),
+  testRtsp: (rtspUrl: string) =>
+    api<{ ok?: boolean; success?: boolean; message?: string; url?: string }>('/api/schedules/test-rtsp', {
+      method: 'POST',
+      json: { rtspUrl },
+    }),
+  listDevices: () => api<{ devices: Device[] }>('/api/devices'),
+  createDevice: (device: DeviceInput) =>
+    api<{ device: Device }>('/api/devices', {
+      method: 'POST',
+      json: device,
+    }),
+  updateDevice: (deviceId: string, device: DeviceInput) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}`, {
+      method: 'PUT',
+      json: device,
+    }),
+  deleteDevice: (deviceId: string) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}`, {
+      method: 'DELETE',
+    }),
+  updateDevicePlayAllowed: (deviceId: string, playAllowed: boolean) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}/play-allowed`, {
+      method: 'PUT',
+      json: { playAllowed },
+    }),
+  playDeviceNow: (deviceId: string, scheduleId: string) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}/play-now`, {
+      method: 'POST',
+      json: { scheduleId },
+    }),
+  stopDevice: (deviceId: string) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}/stop`, {
+      method: 'POST',
+    }),
+  syncDeviceSchedule: (deviceId: string, scheduleId: string) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}/sync-schedule`, {
+      method: 'POST',
+      json: { scheduleId },
+    }),
+  listTtsVoices: () => api<TtsVoicesResponse>('/api/tts/voices'),
+  generateTts: (input: TtsGenerateInput) =>
+    api<{ file: AudioFile; voice: string; speed: string; characters: number }>('/api/tts/generate', {
+      method: 'POST',
+      json: input,
+    }),
+};
