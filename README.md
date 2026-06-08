@@ -130,7 +130,7 @@ broadcast-server/
 ### Tech Stack chi tiết
 
 ```
-Backend (packages/server):
+Backend (`backend-api`):
   - NestJS 11       ─ Framework, DI, Modules
   - Socket.IO 4     ─ WebSocket real-time
   - Supabase JS 2   ─ Database + Storage client
@@ -139,7 +139,7 @@ Backend (packages/server):
   - Multer          ─ File upload
   - FPT.AI API      ─ Text-to-Speech
 
-Frontend (packages/web):
+Frontend (`ui-web`):
   - React 19        ─ UI framework
   - Vite 5          ─ Build tool
   - TypeScript 5    ─ Type safety
@@ -239,13 +239,14 @@ broadcast-server/
 ```bash
 git clone <repo-url> broadcast-server
 cd broadcast-server
-npm install          # Cài tất cả packages trong monorepo
+cd backend-api && npm install
+cd ../ui-web && npm install
 ```
 
 ### 2. Cấu hình môi trường
 
 ```bash
-cp packages/server/.env.example packages/server/.env
+cp backend-api/.env.example backend-api/.env
 # Chỉnh sửa file .env (xem phần Cấu hình môi trường bên dưới)
 ```
 
@@ -253,28 +254,26 @@ cp packages/server/.env.example packages/server/.env
 
 Chạy SQL trong Supabase SQL Editor theo thứ tự:
 ```bash
-# Chạy từng file trong packages/server/database/migrations/
-001_create_organizations.sql
-002_create_users.sql
-003_create_audio_files.sql
-...
+# Chạy nội dung file:
+backend-api/supabase.sql
 ```
 
 ### 4. Chạy backend
 
 ```bash
 # Dùng Docker Compose (bao gồm cả MediaMTX)
-cd packages/server
+cd backend-api
 docker compose up -d
 
 # Hoặc dev mode không cần Docker (cần MediaMTX riêng)
-npm run start:dev -w packages/server
+npm run start:dev
 ```
 
 ### 5. Chạy frontend
 
 ```bash
-npm run dev -w packages/web
+cd ui-web
+npm run dev
 # Truy cập: http://localhost:5173
 ```
 
@@ -282,7 +281,7 @@ npm run dev -w packages/web
 
 ## Cấu hình môi trường
 
-File: `packages/server/.env`
+File: `backend-api/.env`
 
 ```env
 # ─── App ───────────────────────────────────────────────────────────
@@ -511,14 +510,14 @@ API dành riêng cho Android App (thiết bị loa). Xác thực bằng `Authori
 
 > **Target**: AWS EC2 + Supabase (managed PostgreSQL + Storage)
 
-### Docker Compose khuyến nghị sau khi tách Admin Web
+### Docker Compose production khuyến nghị
 
-Repo hiện tại có backend trong `demo-admin` và React admin trong `admin-web`. Cách deploy khuyến nghị trên VPS/AWS EC2 là chạy root Docker Compose:
+Repo hiện tại có backend trong `backend-api` và React admin trong `ui-web`. Cách deploy khuyến nghị trên VPS/AWS EC2 là chạy root Docker Compose từ source tổng:
 
 ```bash
 cd broadcast-server
-cp demo-admin/.env.example demo-admin/.env
-nano demo-admin/.env
+cp backend-api/.env.example backend-api/.env
+nano backend-api/.env
 docker compose up -d --build
 ```
 
@@ -540,7 +539,7 @@ Các route public qua cùng domain:
 | `/client` | Android/WebView client page từ backend |
 | `/hls/<stream_path>/index.m3u8` | MediaMTX HLS |
 
-File `demo-admin/.env` production nên có tối thiểu:
+File `backend-api/.env` production nên có tối thiểu:
 
 ```env
 NODE_ENV=production
@@ -573,15 +572,14 @@ Không mở public `3000`, `8554`, `8888` trong production. Nếu cần HTTPS ch
 Internet
    │
    ▼
-[AWS ALB / CloudFront]
+[EC2/VPS :80 - service web/Nginx]
    │
-   ├──► [EC2: NestJS Backend :3000]
-   │         └── [MediaMTX :8888 (HLS public)]
-   │                   └── [FFmpeg (internal)]
-   │
-   └──► [Supabase]
-            ├── PostgreSQL Database
-            └── S3-compatible Storage (audio files)
+   ├──► [React Admin static files]
+   ├──► [/api, /client, /socket.io -> api:3000]
+   └──► [/hls -> mediamtx:8888]
+
+[api:3000] ──► [Supabase PostgreSQL + Storage]
+[api:3000] ──► [MediaMTX RTSP nội bộ :8554]
 ```
 
 ### Docker Compose Production
@@ -589,7 +587,17 @@ Internet
 ```bash
 # Trên EC2
 git clone <repo-url>
-cd broadcast-server/packages/server
+cd broadcast-server
+cp backend-api/.env.example backend-api/.env
+nano backend-api/.env
+
+docker compose up -d --build
+```
+
+Nếu chỉ muốn chạy backend/API để debug trực tiếp port `3000` và HLS `8888`, dùng compose riêng trong `backend-api`:
+
+```bash
+cd broadcast-server/backend-api
 cp .env.example .env
 nano .env    # Điền thông tin production
 
@@ -599,10 +607,10 @@ docker compose up -d --build
 ### Firewall / Security Group
 
 ```bash
-# Mở các port cần thiết
-sudo ufw allow 3000/tcp    # NestJS API
-sudo ufw allow 8888/tcp    # MediaMTX HLS (nếu public)
-# KHÔNG mở 8554 (RTSP nội bộ)
+# Production qua root docker-compose.yml
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+# KHÔNG mở 3000, 8554, 8888 trong production
 ```
 
 ### HTTPS (bắt buộc cho Live Mic)
@@ -637,7 +645,7 @@ server {
 - [x] Backend API (NestJS) — audio, playlist, schedule, device
 - [x] WebSocket gateway — real-time broadcast control
 - [x] Admin UI inline (legacy)
-- [ ] **Monorepo structure** (`packages/shared`, `packages/server`, `packages/web`)
+- [x] **Repo structure** (`backend-api`, `ui-web`)
 - [ ] **Multi-tenant** — `organization_id` trên tất cả bảng
 - [ ] **User/Roles** — Supabase Auth + RBAC
 - [ ] **React Admin UI** hoàn thiện (thay thế inline HTML)

@@ -1,7 +1,7 @@
 services:
   web:
     build:
-      context: ./admin-web
+      context: ./ui-web
     ports:
       - "${WEB_PORT:-80}:80"
     depends_on:
@@ -11,9 +11,9 @@ services:
 
   api:
     build:
-      context: ./demo-admin
+      context: ./backend-api
     env_file:
-      - ./demo-admin/.env
+      - ./backend-api/.env
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -24,7 +24,7 @@ services:
     expose:
       - "3000"
     volumes:
-      - ./demo-admin/uploads:/app/uploads
+      - ./backend-api/uploads:/app/uploads
     depends_on:
       - mediamtx
     restart: unless-stopped
