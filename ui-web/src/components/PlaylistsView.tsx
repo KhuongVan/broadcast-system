@@ -3,6 +3,7 @@ import { adminApi } from '../lib/api';
 import { formatBytes, formatDateTime } from '../lib/format';
 import type { AudioFile, Playlist } from '../lib/types';
 import { DataState } from './DataState';
+import { Modal } from './Modal';
 import { Panel } from './Panel';
 
 type PlaylistsViewProps = {
@@ -19,6 +20,7 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
 
   const selected = useMemo(
     () => playlists.find((playlist) => playlist.playlistId === selectedId) || playlists[0] || null,
@@ -53,6 +55,7 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
     try {
       const data = await adminApi.createPlaylist(name.trim());
       setName('');
+      setModalOpen(false);
       await load(data.playlist.playlistId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tạo được danh sách phát.');
@@ -130,19 +133,48 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
       title={embedded ? 'Danh sách phát' : 'Danh sách phát'}
       description="Tạo playlist, đổi tên và sắp file âm thanh dùng cho lịch phát."
       actions={
-        <form className="inline-form" onSubmit={createPlaylist}>
-          <input
-            placeholder="Tên danh sách phát"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <button className="primary" disabled={saving || !name.trim()}>
-            Tạo
-          </button>
-        </form>
+        <button className="primary" onClick={() => setModalOpen(true)} type="button">
+          Tạo playlist
+        </button>
       }
     >
       <DataState loading={loading} error={error} empty={!playlists.length} />
+      {modalOpen ? (
+        <Modal
+          title="Tạo playlist"
+          onClose={() => {
+            setModalOpen(false);
+            setName('');
+          }}
+        >
+          <form className="form-panel" onSubmit={createPlaylist}>
+            <label>
+              Tên danh sách phát
+              <input
+                placeholder="Tên danh sách phát"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+              />
+            </label>
+            <div className="row-actions">
+              <button className="primary" disabled={saving || !name.trim()}>
+                Tạo
+              </button>
+              <button
+                className="ghost"
+                onClick={() => {
+                  setModalOpen(false);
+                  setName('');
+                }}
+                type="button"
+              >
+                Hủy
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
       {!loading && playlists.length ? (
         <div className="split-layout">
           <div className="table-wrap">

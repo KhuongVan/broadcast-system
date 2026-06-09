@@ -422,6 +422,17 @@ audio {
   margin: 4px 0 0;
 }
 
+.icon-btn {
+  align-items: center;
+  display: inline-flex;
+  font-size: 22px;
+  height: 38px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0;
+  width: 38px;
+}
+
 .primary {
   background: #1458f5;
   color: #fff;
@@ -798,9 +809,63 @@ audio {
   max-width: 680px;
 }
 
+.section-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.section-toolbar .toolbar-row {
+  flex: 1;
+}
+
 .select-col {
   text-align: center;
   width: 44px;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(8, 11, 36, 0.52);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 30;
+}
+
+.modal {
+  background: #fff;
+  border: 1px solid #dfe7f1;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(8, 11, 36, 0.24);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  width: min(720px, 100%);
+}
+
+.modal-header {
+  align-items: center;
+  border-bottom: 1px solid #e7edf5;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px 20px;
+}
+
+.modal-header h2 {
+  color: #26364f;
+  font-size: 22px;
+  margin: 0;
+}
+
+.modal-body {
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding: 20px;
 }
 
 .bar-row {

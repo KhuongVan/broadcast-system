@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { adminApi } from '../lib/api';
 import type { AudioFile, Playlist, Schedule, ScheduleInput } from '../lib/types';
 import { DataState } from './DataState';
+import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { StatusBadge } from './StatusBadge';
 
@@ -35,6 +36,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
   const [testResult, setTestResult] = useState('');
 
   const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
@@ -79,6 +81,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
 
   function edit(schedule: Schedule) {
     setEditingId(schedule.scheduleId);
+    setModalOpen(true);
     setTestResult('');
     setForm({
       name: schedule.name,
@@ -102,6 +105,16 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     setForm(emptyForm);
   }
 
+  function openCreateModal() {
+    resetForm();
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    resetForm();
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -114,6 +127,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
         await adminApi.createSchedule(payload);
       }
       resetForm();
+      setModalOpen(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không lưu được lịch phát.');
@@ -157,129 +171,18 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   }, []);
 
   return (
-    <Panel title={embedded ? 'Lịch phát' : 'Lịch phát'} description="Tạo, sửa, kiểm tra URL và quản lý lịch tự động.">
+    <Panel
+      title={embedded ? 'Lịch phát' : 'Lịch phát'}
+      description="Tạo, sửa, kiểm tra URL và quản lý lịch tự động."
+      actions={
+        <button className="primary" onClick={openCreateModal} type="button">
+          Tạo lịch phát
+        </button>
+      }
+    >
       <DataState loading={loading} error={error} empty={!schedules.length && !playlists.length && !files.length} emptyText="Chưa có dữ liệu lịch phát." />
       {!loading ? (
-        <div className="split-layout">
-          <form className="detail-panel form-panel" onSubmit={save}>
-            <h3>{editingId ? 'Sửa lịch phát' : 'Tạo lịch phát'}</h3>
-            <label>
-              Tên lịch
-              <input value={form.name} onChange={(event) => update('name', event.target.value)} required />
-            </label>
-            <div className="form-grid">
-              <label>
-                Nguồn phát
-                <select value={form.sourceType} onChange={(event) => update('sourceType', event.target.value as ScheduleInput['sourceType'])}>
-                  <option value="RTSP">RTSP/HLS URL</option>
-                  <option value="FILE">File/Playlist</option>
-                </select>
-              </label>
-              <label>
-                Ưu tiên
-                <select value={form.priority} onChange={(event) => update('priority', event.target.value as ScheduleInput['priority'])}>
-                  <option value="NORMAL">Thường</option>
-                  <option value="EMERGENCY">Khẩn cấp</option>
-                </select>
-              </label>
-            </div>
-
-            {form.sourceType === 'RTSP' ? (
-              <label>
-                Stream URL
-                <input
-                  placeholder="rtsp:// hoặc https://..."
-                  value={form.rtspUrl || ''}
-                  onChange={(event) => update('rtspUrl', event.target.value)}
-                  required
-                />
-              </label>
-            ) : (
-              <>
-                <label>
-                  Playlist
-                  <select value={form.playlistId || ''} onChange={(event) => update('playlistId', event.target.value || null)} required>
-                    <option value="">Chọn playlist</option>
-                    {playlists.map((playlist) => (
-                      <option key={playlist.playlistId} value={playlist.playlistId}>
-                        {playlist.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="form-grid">
-                  <label>
-                    Chế độ file
-                    <select value={form.fileMode || 'PLAYLIST'} onChange={(event) => update('fileMode', event.target.value as ScheduleInput['fileMode'])}>
-                      <option value="PLAYLIST">Phát cả playlist</option>
-                      <option value="SINGLE_FILE">Một file trong playlist</option>
-                    </select>
-                  </label>
-                  {form.fileMode === 'SINGLE_FILE' ? (
-                    <label>
-                      File
-                      <select value={form.fileId || ''} onChange={(event) => update('fileId', event.target.value || null)} required>
-                        <option value="">Chọn file</option>
-                        {files.map((file) => (
-                          <option key={file.fileId} value={file.fileId}>
-                            {file.originalName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                </div>
-              </>
-            )}
-
-            <div className="form-grid">
-              <label>
-                Ngày bắt đầu
-                <input type="date" value={form.startDate} onChange={(event) => update('startDate', event.target.value)} required />
-              </label>
-              <label>
-                Lặp
-                <select value={form.repeatType} onChange={(event) => update('repeatType', event.target.value as ScheduleInput['repeatType'])}>
-                  <option value="ONCE">Một lần</option>
-                  <option value="DAILY">Hằng ngày</option>
-                  <option value="WEEKLY">Hằng tuần</option>
-                  <option value="MONTHLY">Hằng tháng</option>
-                </select>
-              </label>
-            </div>
-            <div className="form-grid">
-              <label>
-                Giờ bắt đầu
-                <input type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} required />
-              </label>
-              <label>
-                Giờ kết thúc
-                <input type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
-              </label>
-            </div>
-            <label className="check-row">
-              <input checked={form.enabled} onChange={(event) => update('enabled', event.target.checked)} type="checkbox" />
-              Bật lịch
-            </label>
-            <div className="row-actions">
-              <button className="primary" disabled={saving || !form.name.trim()}>
-                {editingId ? 'Lưu lịch' : 'Tạo lịch'}
-              </button>
-              {form.sourceType === 'RTSP' ? (
-                <button className="ghost" disabled={saving || !form.rtspUrl?.trim()} onClick={() => void testRtsp()} type="button">
-                  Test URL
-                </button>
-              ) : null}
-              {editingId ? (
-                <button className="ghost" onClick={resetForm} type="button">
-                  Hủy sửa
-                </button>
-              ) : null}
-            </div>
-            {testResult ? <div className="state compact">{testResult}</div> : null}
-            {rtspSchedules.length ? <p className="subtext">Play-now và sync thiết bị chỉ dùng lịch RTSP/HLS.</p> : null}
-          </form>
-
+        <>
           <div className="table-wrap">
             <table>
               <thead>
@@ -324,7 +227,126 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
               </tbody>
             </table>
           </div>
-        </div>
+          {modalOpen ? (
+            <Modal title={editingId ? 'Sửa lịch phát' : 'Tạo lịch phát'} onClose={closeModal}>
+              <form className="form-panel" onSubmit={save}>
+                <label>
+                  Tên lịch
+                  <input value={form.name} onChange={(event) => update('name', event.target.value)} required />
+                </label>
+                <div className="form-grid">
+                  <label>
+                    Nguồn phát
+                    <select value={form.sourceType} onChange={(event) => update('sourceType', event.target.value as ScheduleInput['sourceType'])}>
+                      <option value="RTSP">RTSP/HLS URL</option>
+                      <option value="FILE">File/Playlist</option>
+                    </select>
+                  </label>
+                  <label>
+                    Ưu tiên
+                    <select value={form.priority} onChange={(event) => update('priority', event.target.value as ScheduleInput['priority'])}>
+                      <option value="NORMAL">Thường</option>
+                      <option value="EMERGENCY">Khẩn cấp</option>
+                    </select>
+                  </label>
+                </div>
+
+                {form.sourceType === 'RTSP' ? (
+                  <label>
+                    Stream URL
+                    <input
+                      placeholder="rtsp:// hoặc https://..."
+                      value={form.rtspUrl || ''}
+                      onChange={(event) => update('rtspUrl', event.target.value)}
+                      required
+                    />
+                  </label>
+                ) : (
+                  <>
+                    <label>
+                      Playlist
+                      <select value={form.playlistId || ''} onChange={(event) => update('playlistId', event.target.value || null)} required>
+                        <option value="">Chọn playlist</option>
+                        {playlists.map((playlist) => (
+                          <option key={playlist.playlistId} value={playlist.playlistId}>
+                            {playlist.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="form-grid">
+                      <label>
+                        Chế độ file
+                        <select value={form.fileMode || 'PLAYLIST'} onChange={(event) => update('fileMode', event.target.value as ScheduleInput['fileMode'])}>
+                          <option value="PLAYLIST">Phát cả playlist</option>
+                          <option value="SINGLE_FILE">Một file trong playlist</option>
+                        </select>
+                      </label>
+                      {form.fileMode === 'SINGLE_FILE' ? (
+                        <label>
+                          File
+                          <select value={form.fileId || ''} onChange={(event) => update('fileId', event.target.value || null)} required>
+                            <option value="">Chọn file</option>
+                            {files.map((file) => (
+                              <option key={file.fileId} value={file.fileId}>
+                                {file.originalName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+
+                <div className="form-grid">
+                  <label>
+                    Ngày bắt đầu
+                    <input type="date" value={form.startDate} onChange={(event) => update('startDate', event.target.value)} required />
+                  </label>
+                  <label>
+                    Lặp
+                    <select value={form.repeatType} onChange={(event) => update('repeatType', event.target.value as ScheduleInput['repeatType'])}>
+                      <option value="ONCE">Một lần</option>
+                      <option value="DAILY">Hằng ngày</option>
+                      <option value="WEEKLY">Hằng tuần</option>
+                      <option value="MONTHLY">Hằng tháng</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="form-grid">
+                  <label>
+                    Giờ bắt đầu
+                    <input type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} required />
+                  </label>
+                  <label>
+                    Giờ kết thúc
+                    <input type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
+                  </label>
+                </div>
+                <label className="check-row">
+                  <input checked={form.enabled} onChange={(event) => update('enabled', event.target.checked)} type="checkbox" />
+                  Bật lịch
+                </label>
+                <div className="row-actions">
+                  <button className="primary" disabled={saving || !form.name.trim()}>
+                    {editingId ? 'Lưu lịch' : 'Tạo lịch'}
+                  </button>
+                  {form.sourceType === 'RTSP' ? (
+                    <button className="ghost" disabled={saving || !form.rtspUrl?.trim()} onClick={() => void testRtsp()} type="button">
+                      Test URL
+                    </button>
+                  ) : null}
+                  <button className="ghost" onClick={closeModal} type="button">
+                    Hủy
+                  </button>
+                </div>
+                {testResult ? <div className="state compact">{testResult}</div> : null}
+                {rtspSchedules.length ? <p className="subtext">Play-now và sync thiết bị chỉ dùng lịch RTSP/HLS.</p> : null}
+              </form>
+            </Modal>
+          ) : null}
+        </>
       ) : null}
     </Panel>
   );

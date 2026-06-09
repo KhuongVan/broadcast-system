@@ -3,6 +3,7 @@ import { adminApi } from '../lib/api';
 import { formatDateTime, formatStatus } from '../lib/format';
 import type { Device, DeviceInput, Schedule } from '../lib/types';
 import { DataState } from './DataState';
+import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { StatusBadge } from './StatusBadge';
 
@@ -31,6 +32,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
 
   const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
 
@@ -78,6 +80,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   function edit(device: Device) {
     onChangeSection('settings');
     setEditingId(device.deviceId);
+    setModalOpen(true);
     setForm({
       name: device.name,
       macAddress: device.macAddress,
@@ -89,6 +92,16 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   function resetForm() {
     setEditingId('');
     setForm(emptyDevice);
+  }
+
+  function openCreateModal() {
+    resetForm();
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    resetForm();
   }
 
   function toggleDevice(deviceId: string, selected: boolean) {
@@ -112,6 +125,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       if (editingId) await adminApi.updateDevice(editingId, form);
       else await adminApi.createDevice(form);
       resetForm();
+      setModalOpen(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không lưu được thiết bị.');
@@ -263,42 +277,14 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
           ) : null}
 
           {activeSection === 'settings' ? (
-            <div className="split-layout">
-              <form className="detail-panel form-panel" onSubmit={save}>
-                <h3>{editingId ? 'Sửa thiết bị' : 'Thêm thiết bị'}</h3>
-                <label>
-                  Tên thiết bị
-                  <input value={form.name} onChange={(event) => update('name', event.target.value)} required />
-                </label>
-                <label>
-                  MAC address
-                  <input value={form.macAddress} onChange={(event) => update('macAddress', event.target.value)} required />
-                </label>
-                <label>
-                  Khu vực
-                  <input value={form.area} onChange={(event) => update('area', event.target.value)} placeholder="Chưa phân khu" />
-                </label>
-                <label>
-                  Kết nối
-                  <select value={form.connectionType} onChange={(event) => update('connectionType', event.target.value as DeviceInput['connectionType'])}>
-                    <option value="4G">4G</option>
-                    <option value="LAN">LAN</option>
-                  </select>
-                </label>
-                <div className="row-actions">
-                  <button className="primary" disabled={saving || !form.name.trim() || !form.macAddress.trim()}>
-                    {editingId ? 'Lưu thiết bị' : 'Thêm thiết bị'}
-                  </button>
-                  {editingId ? (
-                    <button className="ghost" onClick={resetForm} type="button">
-                      Hủy sửa
-                    </button>
-                  ) : null}
-                </div>
-              </form>
-
-              <div>
+            <>
+              <div className="section-toolbar">
                 <DeviceSearch value={search} onChange={setSearch} />
+                <button className="primary" onClick={openCreateModal} type="button">
+                  Thêm thiết bị
+                </button>
+              </div>
+              <div>
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -333,7 +319,40 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                   </table>
                 </div>
               </div>
-            </div>
+              {modalOpen ? (
+                <Modal title={editingId ? 'Sửa thiết bị' : 'Thêm thiết bị'} onClose={closeModal}>
+                  <form className="form-panel" onSubmit={save}>
+                    <label>
+                      Tên thiết bị
+                      <input value={form.name} onChange={(event) => update('name', event.target.value)} required />
+                    </label>
+                    <label>
+                      MAC address
+                      <input value={form.macAddress} onChange={(event) => update('macAddress', event.target.value)} required />
+                    </label>
+                    <label>
+                      Khu vực
+                      <input value={form.area} onChange={(event) => update('area', event.target.value)} placeholder="Chưa phân khu" />
+                    </label>
+                    <label>
+                      Kết nối
+                      <select value={form.connectionType} onChange={(event) => update('connectionType', event.target.value as DeviceInput['connectionType'])}>
+                        <option value="4G">4G</option>
+                        <option value="LAN">LAN</option>
+                      </select>
+                    </label>
+                    <div className="row-actions">
+                      <button className="primary" disabled={saving || !form.name.trim() || !form.macAddress.trim()}>
+                        {editingId ? 'Lưu thiết bị' : 'Thêm thiết bị'}
+                      </button>
+                      <button className="ghost" onClick={closeModal} type="button">
+                        Hủy
+                      </button>
+                    </div>
+                  </form>
+                </Modal>
+              ) : null}
+            </>
           ) : null}
 
           {activeSection === 'logs' ? (
