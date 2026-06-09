@@ -2,7 +2,9 @@ import { ChangeEvent, useEffect, useState } from 'react';
 import { adminApi } from '../lib/api';
 import { formatBytes, formatDateTime } from '../lib/format';
 import type { AudioFile } from '../lib/types';
+import { Modal } from './Modal';
 import { Panel } from './Panel';
+import { TtsForm } from './TtsForm';
 
 type FilesViewProps = {
   embedded?: boolean;
@@ -13,6 +15,7 @@ export function FilesView({ embedded = false }: FilesViewProps) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [ttsModalOpen, setTtsModalOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -53,12 +56,22 @@ export function FilesView({ embedded = false }: FilesViewProps) {
       title={embedded ? 'Kho âm thanh' : 'Kho âm thanh'}
       description="Upload và xem các file âm thanh đã lưu."
       actions={
-        <label className="file-input">
-          {uploading ? 'Đang upload...' : 'Upload MP3'}
-          <input accept="audio/mpeg,.mp3" disabled={uploading} onChange={upload} type="file" />
-        </label>
+        <div className="file-actions">
+          <button className="primary" onClick={() => setTtsModalOpen(true)} type="button">
+            Tạo âm thanh từ văn bản
+          </button>
+          <label className="file-input">
+            {uploading ? 'Đang upload...' : 'Upload MP3'}
+            <input accept="audio/mpeg,.mp3" disabled={uploading} onChange={upload} type="file" />
+          </label>
+        </div>
       }
     >
+      {ttsModalOpen ? (
+        <Modal title="Tạo âm thanh từ văn bản" onClose={() => setTtsModalOpen(false)}>
+          <TtsForm onGenerated={() => void load()} />
+        </Modal>
+      ) : null}
       {loading ? <div className="state">Đang tải dữ liệu...</div> : null}
       {error ? <div className="state error">{error}</div> : null}
       {!loading && !error && !files.length ? <div className="state">Chưa có file âm thanh.</div> : null}

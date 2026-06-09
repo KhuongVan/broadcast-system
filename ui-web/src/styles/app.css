@@ -467,6 +467,14 @@ audio {
   display: none;
 }
 
+.file-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .badge {
   align-items: center;
   border-radius: 999px;
@@ -519,6 +527,64 @@ audio {
   background: #eef6ff !important;
 }
 
+.playlist-page {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.playlist-table th {
+  background: #12a7b8;
+  color: #172033;
+  font-size: 14px;
+}
+
+.playlist-table td {
+  font-size: 15px;
+}
+
+.playlist-table tbody tr:nth-child(even) {
+  background: #f7f7f8;
+}
+
+.playlist-modal-form {
+  gap: 18px;
+}
+
+.playlist-modal-form input[readonly] {
+  background: #eef2f7;
+  color: #334155;
+}
+
+.playlist-file-picker {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.playlist-file-list {
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  display: grid;
+  min-height: 92px;
+  overflow: hidden;
+}
+
+.playlist-file-row {
+  align-items: center;
+  background: #fff;
+  border-top: 1px solid #e6edf5;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.playlist-file-row:first-child {
+  border-top: 0;
+}
+
 .split-layout {
   display: grid;
   gap: 18px;
@@ -527,6 +593,13 @@ audio {
 }
 
 .broadcast-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  padding: 18px;
+}
+
+.tts-form-layout {
   display: grid;
   gap: 18px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
