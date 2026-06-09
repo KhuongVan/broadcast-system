@@ -24,6 +24,11 @@ function getMarkerIcon(device: Device) {
   });
 }
 
+function getDevicePosition(device: Device): [number, number] | null {
+  if (typeof device.latitude !== 'number' || typeof device.longitude !== 'number') return null;
+  return [device.latitude, device.longitude];
+}
+
 function MapUpdater({ center, zoom }: { center: [number, number] | null; zoom?: number }) {
   const map = useMap();
   if (center) {
@@ -86,7 +91,7 @@ export function DeviceMapView({ devices, stats }: DeviceMapViewProps) {
                   >
                     <span className={`status-dot ${device.playStatus === 'ERROR' ? 'error' : device.playStatus === 'PLAYING' ? 'playing' : device.online ? 'online' : 'offline'}`}></span>
                     <span className="device-name">{device.name}</span>
-                    {!device.latitude && <span className="no-coords" title="Chưa có tọa độ">⚠️</span>}
+                    {!getDevicePosition(device) && <span className="no-coords" title="Chưa có tọa độ">⚠️</span>}
                   </div>
                 ))}
               </div>
@@ -100,13 +105,14 @@ export function DeviceMapView({ devices, stats }: DeviceMapViewProps) {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {activeDevice && <MapUpdater center={activeDevice.latitude ? [activeDevice.latitude, activeDevice.longitude] : null} />}
+            {activeDevice && <MapUpdater center={getDevicePosition(activeDevice)} />}
             {devices.map(device => {
-              if (device.latitude && device.longitude) {
+              const position = getDevicePosition(device);
+              if (position) {
                 return (
                   <Marker 
                     key={device.deviceId} 
-                    position={[device.latitude, device.longitude]}
+                    position={position}
                     icon={getMarkerIcon(device)}
                     eventHandlers={{
                       click: () => setActiveDevice(device),
