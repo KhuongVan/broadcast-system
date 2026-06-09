@@ -236,6 +236,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                         Dừng
                       </button>
                     </div>
+                    <strong className="selected-device-count">Đã chọn {selectedDeviceIds.size} thiết bị</strong>
                     <div className="device-operation-stats">
                       <span>Tổng thiết bị: <strong>{stats.total}</strong></span>
                       <span>Kết nối: <strong>{stats.online}</strong></span>
@@ -244,7 +245,6 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                   </div>
 
                   <div className="device-operate-search">
-                    <strong>Đã chọn {selectedDeviceIds.size} thiết bị</strong>
                     <DeviceSearch value={search} onChange={setSearch} />
                   </div>
 

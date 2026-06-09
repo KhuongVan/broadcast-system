@@ -61,7 +61,7 @@ export class DevicesService {
 
     return this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
       syncStatus: device.online ? 'SYNCED' : 'FAILED',
-      syncMessage: device.online ? 'Da gan lich xuong thiet bi demo.' : 'Thiet bi dang mat ket noi.',
+      syncMessage: device.online ? 'Da gan lich cho thiet bi.' : 'Thiet bi dang mat ket noi.',
     });
   }
 
