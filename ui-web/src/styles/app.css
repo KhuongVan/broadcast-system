@@ -763,6 +763,133 @@ audio {
   gap: 16px;
 }
 
+.device-operate-layout {
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  padding: 16px;
+}
+
+.schedule-list-panel {
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.schedule-list-panel h3 {
+  border-bottom: 1px solid #e7edf5;
+  color: #26364f;
+  font-size: 18px;
+  margin: 0;
+  padding: 16px 18px;
+}
+
+.schedule-list {
+  display: grid;
+}
+
+.schedule-list-item {
+  align-items: center;
+  background: #fff;
+  border-radius: 0;
+  border-top: 1px solid #edf2f7;
+  color: #26364f;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  justify-items: start;
+  min-height: 72px;
+  padding: 12px 16px;
+  text-align: left;
+}
+
+.schedule-list-item:first-child {
+  border-top: 0;
+}
+
+.schedule-list-item.active {
+  background: #f0f8ff;
+}
+
+.schedule-list-item input {
+  min-height: auto;
+  width: auto;
+}
+
+.schedule-list-item strong {
+  display: block;
+}
+
+.schedule-list-item small {
+  color: #65758f;
+  display: block;
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.schedule-list-item em {
+  background: #e8eef6;
+  border-radius: 999px;
+  color: #334155;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.device-operation-board {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.device-operation-toolbar {
+  align-items: center;
+  background: #0b8af8;
+  border-radius: 8px;
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.device-operation-toolbar .primary,
+.device-operation-toolbar .success,
+.device-operation-toolbar .danger {
+  min-width: 94px;
+}
+
+.device-operation-stats {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  font-weight: 800;
+}
+
+.device-operate-search {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.device-operate-search .toolbar-row {
+  flex: 1 1 320px;
+  justify-content: flex-end;
+}
+
+.device-operate-search .toolbar-row input {
+  max-width: 520px;
+}
+
 .device-command-panel {
   align-items: end;
   background: linear-gradient(135deg, #1359ff, #1631bb);
@@ -821,6 +948,69 @@ audio {
   display: grid;
   gap: 18px;
   padding: 18px;
+}
+
+.live-status {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.live-status.active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.live-status > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.live-table th {
+  background: #171f9f;
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
+}
+
+.live-table td {
+  text-align: center;
+}
+
+.live-table td:nth-child(2),
+.live-table td:nth-child(3) {
+  text-align: left;
+}
+
+.live-table tbody tr:nth-child(even) {
+  background: #f7f7f8;
+}
+
+.live-table-footer {
+  align-items: center;
+  border-top: 1px solid #e6edf5;
+  color: #334155;
+  display: flex;
+  font-weight: 800;
+  justify-content: space-between;
+  padding: 14px 0 0;
+}
+
+.live-broadcaster {
+  display: inline-block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .live-modal-form {
@@ -1015,6 +1205,7 @@ audio {
 
   .filter-row,
   .tab-bar,
+  .device-operate-layout,
   .device-command-panel,
   .device-stats-grid,
   .form-grid {

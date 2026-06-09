@@ -38,7 +38,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
 
-  const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
+  const operationSchedules = useMemo(() => schedules, [schedules]);
 
   const filteredDevices = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -68,7 +68,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       setSchedules(scheduleData.schedules);
       setSelectedDeviceIds((current) => new Set([...current].filter((deviceId) => deviceData.devices.some((device) => device.deviceId === deviceId))));
       if (!selectedScheduleId) {
-        setSelectedScheduleId(scheduleData.schedules.find((schedule) => schedule.sourceType === 'RTSP')?.scheduleId || '');
+        setSelectedScheduleId(scheduleData.schedules[0]?.scheduleId || '');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tải được thiết bị.');
@@ -179,6 +179,11 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     await runDeviceAction(() => Promise.all(ids.map((deviceId) => action(deviceId))));
   }
 
+  async function stopScheduledPlayback(deviceId: string) {
+    await adminApi.updateDevicePlayAllowed(deviceId, false);
+    await adminApi.stopDevice(deviceId);
+  }
+
   useEffect(() => {
     void load();
   }, []);
@@ -194,94 +199,100 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
 
           {activeSection === 'operate' ? (
             <div className="device-operate">
-              <div className="device-command-panel">
-                <div>
-                  <span className="section-kicker">Lịch RTSP/HLS</span>
-                  <select value={selectedScheduleId} onChange={(event) => setSelectedScheduleId(event.target.value)}>
-                    <option value="">Chọn lịch phát</option>
-                    {rtspSchedules.map((schedule) => (
-                      <option key={schedule.scheduleId} value={schedule.scheduleId}>
-                        {schedule.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="device-actions">
-                  <button className="primary" disabled={saving || !selectedDeviceIds.size || !selectedScheduleId} onClick={() => void runBulk((id) => adminApi.syncDeviceSchedule(id, selectedScheduleId))} type="button">
-                    Tải lịch
-                  </button>
-                  <button className="success" disabled={saving || !selectedDeviceIds.size || !selectedScheduleId} onClick={() => void runBulk((id) => adminApi.playDeviceNow(id, selectedScheduleId))} type="button">
-                    Phát
-                  </button>
-                  <button className="danger" disabled={saving || !selectedDeviceIds.size} onClick={() => void runBulk((id) => adminApi.stopDevice(id))} type="button">
-                    Dừng
-                  </button>
-                </div>
-              </div>
+              <div className="device-operate-layout">
+                <aside className="schedule-list-panel">
+                  <h3>Danh sách lịch phát</h3>
+                  <div className="schedule-list">
+                    {operationSchedules.length ? operationSchedules.map((schedule) => (
+                      <button
+                        className={selectedScheduleId === schedule.scheduleId ? 'schedule-list-item active' : 'schedule-list-item'}
+                        key={schedule.scheduleId}
+                        onClick={() => setSelectedScheduleId(schedule.scheduleId)}
+                        type="button"
+                      >
+                        <input checked={selectedScheduleId === schedule.scheduleId} readOnly type="radio" />
+                        <span>
+                          <strong>{schedule.name}</strong>
+                          <small>{formatScheduleWindow(schedule)}</small>
+                        </span>
+                        <em>{getScheduleSourceLabel(schedule)}</em>
+                      </button>
+                    )) : (
+                      <div className="state compact">Chưa có lịch phát.</div>
+                    )}
+                  </div>
+                </aside>
 
-              <div className="device-stats-grid">
-                <StatPill label="Tổng thiết bị" value={stats.total} />
-                <StatPill label="Kết nối" value={stats.online} />
-                <StatPill label="Mất kết nối" value={stats.offline} />
-                <StatPill label="Đang phát" value={stats.playing} />
-              </div>
+                <section className="device-operation-board">
+                  <div className="device-operation-toolbar">
+                    <div className="device-actions">
+                      <button className="primary" disabled={saving || !selectedDeviceIds.size || !selectedScheduleId} onClick={() => void runBulk((id) => adminApi.syncDeviceSchedule(id, selectedScheduleId))} type="button">
+                        Tải lịch
+                      </button>
+                      <button className="success" disabled={saving || !selectedDeviceIds.size} onClick={() => void runBulk((id) => adminApi.updateDevicePlayAllowed(id, true))} type="button">
+                        Bật phát
+                      </button>
+                      <button className="danger" disabled={saving || !selectedDeviceIds.size} onClick={() => void runBulk(stopScheduledPlayback)} type="button">
+                        Dừng
+                      </button>
+                    </div>
+                    <div className="device-operation-stats">
+                      <span>Tổng thiết bị: <strong>{stats.total}</strong></span>
+                      <span>Kết nối: <strong>{stats.online}</strong></span>
+                      <span>Mất kết nối: <strong>{stats.offline}</strong></span>
+                    </div>
+                  </div>
 
-              <DeviceSearch value={search} onChange={setSearch} />
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th className="select-col">
-                        <input
-                          checked={filteredDevices.length > 0 && filteredDevices.every((device) => selectedDeviceIds.has(device.deviceId))}
-                          onChange={(event) => toggleAll(event.target.checked)}
-                          type="checkbox"
-                        />
-                      </th>
-                      <th>Thiết bị</th>
-                      <th>Kết nối</th>
-                      <th>Trạng thái phát</th>
-                      <th>Lịch hiện tại</th>
-                      <th>Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDevices.map((device) => (
-                      <tr key={device.deviceId}>
-                        <td className="select-col">
-                          <input checked={selectedDeviceIds.has(device.deviceId)} onChange={(event) => toggleDevice(device.deviceId, event.target.checked)} type="checkbox" />
-                        </td>
-                        <DeviceInfoCell device={device} />
-                        <td>
-                          <StatusBadge tone={device.online ? 'ok' : 'danger'}>{device.online ? 'Online' : 'Offline'}</StatusBadge>
-                          <div className="subtext">{device.connectionType} · {device.networkType || '-'}</div>
-                          {device.batteryLevel !== null ? <div className="subtext">Pin {device.batteryLevel}%</div> : null}
-                        </td>
-                        <td>
-                          <StatusBadge tone={device.playStatus === 'ERROR' ? 'danger' : device.playStatus === 'PLAYING' ? 'ok' : 'neutral'}>
-                            {device.playStatus}
-                          </StatusBadge>
-                          {device.playbackMessage ? <div className="subtext">{device.playbackMessage}</div> : null}
-                        </td>
-                        <td>
-                          <strong>{device.currentSchedule?.name || device.activeSchedule?.name || '-'}</strong>
-                          <div className="subtext">Sync: {device.syncStatus || '-'}</div>
-                          {device.syncMessage ? <div className="subtext">{device.syncMessage}</div> : null}
-                        </td>
-                        <td>
-                          <div className="row-actions">
-                            <button className="ghost" disabled={saving} onClick={() => edit(device)} type="button">
-                              Cài đặt
-                            </button>
-                            <button className="ghost" disabled={saving} onClick={() => void runDeviceAction(() => adminApi.updateDevicePlayAllowed(device.deviceId, !device.playAllowed))} type="button">
-                              {device.playAllowed ? 'Tắt phát' : 'Cho phát'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  <div className="device-operate-search">
+                    <strong>Đã chọn {selectedDeviceIds.size} thiết bị</strong>
+                    <DeviceSearch value={search} onChange={setSearch} />
+                  </div>
+
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th className="select-col">
+                            <input
+                              checked={filteredDevices.length > 0 && filteredDevices.every((device) => selectedDeviceIds.has(device.deviceId))}
+                              onChange={(event) => toggleAll(event.target.checked)}
+                              type="checkbox"
+                            />
+                          </th>
+                          <th>Thông tin thiết bị</th>
+                          <th>Trạng thái phát</th>
+                          <th>Kết nối</th>
+                          <th>Lịch đã tải</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDevices.map((device) => (
+                          <tr key={device.deviceId}>
+                            <td className="select-col">
+                              <input checked={selectedDeviceIds.has(device.deviceId)} onChange={(event) => toggleDevice(device.deviceId, event.target.checked)} type="checkbox" />
+                            </td>
+                            <DeviceInfoCell device={device} />
+                            <td>
+                              <StatusBadge tone={getPlayStatusTone(device)}>{getPlayStatusLabel(device)}</StatusBadge>
+                              {!device.playAllowed ? <div className="subtext">Đang chặn phát theo lịch</div> : null}
+                              {device.playbackMessage ? <div className="subtext">{device.playbackMessage}</div> : null}
+                            </td>
+                            <td>
+                              <StatusBadge tone={device.online ? 'ok' : 'danger'}>{device.online ? 'Kết nối' : 'Mất kết nối'}</StatusBadge>
+                              <div className="subtext">{device.connectionType} · {device.networkType || '-'}</div>
+                              {device.batteryLevel !== null ? <div className="subtext">Pin {device.batteryLevel}%</div> : null}
+                            </td>
+                            <td>
+                              <strong>{device.activeSchedule?.name || '-'}</strong>
+                              <div className="subtext">Sync: {getSyncStatusLabel(device.syncStatus)}</div>
+                              {device.syncMessage ? <div className="subtext">{device.syncMessage}</div> : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               </div>
             </div>
           ) : null}
@@ -416,6 +427,36 @@ function DeviceSearch({ value, onChange }: { value: string; onChange: (value: st
       <input placeholder="Tìm theo tên, MAC, khu vực, kết nối..." value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
+}
+
+function formatScheduleWindow(schedule: Schedule) {
+  return `${schedule.startDate} · ${schedule.startTime.slice(0, 5)}-${schedule.endTime.slice(0, 5)}`;
+}
+
+function getScheduleSourceLabel(schedule: Schedule) {
+  if (schedule.sourceType === 'RTSP') return 'RTSP/HLS';
+  return schedule.fileMode === 'SINGLE_FILE' ? 'File' : 'Danh sách phát';
+}
+
+function getPlayStatusLabel(device: Device) {
+  if (!device.playAllowed) return 'Đang dừng';
+  if (device.playStatus === 'PLAYING') return 'Đang phát';
+  if (device.playStatus === 'ERROR') return 'Báo lỗi';
+  return 'Sẵn sàng';
+}
+
+function getPlayStatusTone(device: Device) {
+  if (!device.playAllowed) return 'warn';
+  if (device.playStatus === 'PLAYING') return 'ok';
+  if (device.playStatus === 'ERROR') return 'danger';
+  return 'neutral';
+}
+
+function getSyncStatusLabel(status: Device['syncStatus']) {
+  if (status === 'SYNCED') return 'Đã tải';
+  if (status === 'FAILED') return 'Thất bại';
+  if (status === 'PENDING') return 'Đang chờ';
+  return '-';
 }
 
 function DeviceInfoCell({ device }: { device: Device }) {

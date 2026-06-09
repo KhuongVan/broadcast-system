@@ -48,6 +48,7 @@ export function BroadcastView() {
   }, [devices]);
 
   const activeSession = useMemo(() => sessions.find((session) => session.status === 'STARTED') || null, [sessions]);
+  const visibleSessions = useMemo(() => sessions, [sessions]);
 
   useEffect(() => {
     const socket = io('/', { withCredentials: true });
@@ -199,6 +200,11 @@ export function BroadcastView() {
     await finishActiveSession();
   }
 
+  function closeModal() {
+    setModalOpen(false);
+    setTitle('');
+  }
+
   function stopRecorder() {
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
@@ -311,13 +317,18 @@ export function BroadcastView() {
       <DataState loading={loading} error={error} empty={!sessions.length} emptyText="Chưa có phiên phát trực tiếp." />
       {!loading ? (
         <div className="live-page">
-          <div className="status-line">
-            <StatusBadge tone={connected ? 'ok' : 'danger'}>{connected ? 'Socket connected' : 'Socket offline'}</StatusBadge>
-            {status ? <span>{status.type}: {status.status}{status.streamVersion ? ` #${status.streamVersion}` : ''}</span> : null}
-            <span>Lịch đang phát: {scheduleStatus.activeSchedule?.name || 'Không có'}</span>
+          <div className={activeSession ? 'live-status active' : 'live-status'}>
+            <div>
+              <StatusBadge tone={connected ? 'ok' : 'danger'}>{connected ? 'Socket kết nối' : 'Socket mất kết nối'}</StatusBadge>
+              {activeSession ? <strong>Đang phát trực tiếp: {activeSession.title}</strong> : <strong>Không có phiên live đang phát</strong>}
+            </div>
+            <div>
+              {status ? <span>{status.type}: {status.status}{status.streamVersion ? ` #${status.streamVersion}` : ''}</span> : null}
+              <span>Lịch đang phát: {scheduleStatus.activeSchedule?.name || 'Không có'}</span>
+            </div>
           </div>
 
-          <div className="table-wrap">
+          <div className="table-wrap live-table">
             <table>
               <thead>
                 <tr>
@@ -332,7 +343,7 @@ export function BroadcastView() {
                 </tr>
               </thead>
               <tbody>
-                {sessions.map((session, index) => (
+                {visibleSessions.map((session, index) => (
                   <tr key={session.sessionId}>
                     <td>{index + 1}</td>
                     <td>
@@ -345,15 +356,17 @@ export function BroadcastView() {
                     <td>
                       <StatusBadge tone={statusTone(session.status)}>{statusLabel(session.status)}</StatusBadge>
                     </td>
-                    <td>{session.startedBy || 'Admin'}</td>
+                    <td>
+                      <span className="live-broadcaster" title={session.startedBy || 'Admin'}>{session.startedBy || 'Admin'}</span>
+                    </td>
                     <td>
                       <div className="row-actions">
                         {session.status === 'STARTED' ? (
-                          <button className="ghost icon-btn" disabled={busy} onClick={() => void stopLive()} title="Dừng phát" type="button">
-                            ■
+                          <button className="ghost" disabled={busy} onClick={() => void stopLive()} title="Dừng phát" type="button">
+                            Dừng
                           </button>
                         ) : null}
-                        <button className="danger icon-btn" disabled={busy || session.status === 'DELETED'} onClick={() => void deleteSession(session.sessionId)} title="Xóa" type="button">
+                        <button className="danger" disabled={busy || session.status === 'DELETED'} onClick={() => void deleteSession(session.sessionId)} title="Xóa phiên phát" type="button">
                           Xóa
                         </button>
                       </div>
@@ -362,15 +375,15 @@ export function BroadcastView() {
                 ))}
               </tbody>
             </table>
+            <div className="live-table-footer">
+              <span>Tổng: {visibleSessions.length} bản ghi</span>
+            </div>
           </div>
 
           {modalOpen ? (
             <Modal
               title="Phát trực tiếp"
-              onClose={() => {
-                setModalOpen(false);
-                setTitle('');
-              }}
+              onClose={closeModal}
             >
               <form className="form-panel live-modal-form" onSubmit={startLive}>
                 <label>
@@ -421,7 +434,7 @@ export function BroadcastView() {
                 </label>
 
                 <div className="modal-footer">
-                  <button className="ghost" onClick={() => setModalOpen(false)} type="button">
+                  <button className="ghost" onClick={closeModal} type="button">
                     Hủy bỏ
                   </button>
                   <button className="primary" disabled={busy || !title.trim()} type="submit">

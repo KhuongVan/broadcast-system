@@ -58,13 +58,10 @@ export class DevicesService {
     const device = await this.getDevice(deviceId);
     const schedule = await this.storage.getSchedule(scheduleId);
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
-    if (schedule.sourceType !== 'RTSP') {
-      throw new BadRequestException('Chi co the tai lich tiep song URL xuong thiet bi demo.');
-    }
 
     return this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
       syncStatus: device.online ? 'SYNCED' : 'FAILED',
-      syncMessage: device.online ? 'Da tai lich xuong thiet bi demo.' : 'Thiet bi dang mat ket noi.',
+      syncMessage: device.online ? 'Da gan lich xuong thiet bi demo.' : 'Thiet bi dang mat ket noi.',
     });
   }
 
