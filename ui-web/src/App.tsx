@@ -3,16 +3,18 @@ import { BroadcastView } from './components/BroadcastView';
 import { DevicesView } from './components/DevicesView';
 import { FilesView } from './components/FilesView';
 import { LoginPage } from './components/LoginPage';
+import { OverviewView } from './components/OverviewView';
 import { PlaylistsView } from './components/PlaylistsView';
+import { ReportsView } from './components/ReportsView';
+import { ScheduleManagementView } from './components/ScheduleManagementView';
 import { SchedulesView } from './components/SchedulesView';
 import { Shell, type ViewKey } from './components/Shell';
-import { TtsView } from './components/TtsView';
 import { adminApi } from './lib/api';
 import type { Session } from './lib/types';
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
-  const [activeView, setActiveView] = useState<ViewKey>('broadcast');
+  const [activeView, setActiveView] = useState<ViewKey>('overview');
   const [loading, setLoading] = useState(true);
 
   async function refreshSession() {
@@ -41,12 +43,17 @@ export function App() {
 
   return (
     <Shell activeView={activeView} session={session} onChangeView={setActiveView} onLogout={() => void logout()}>
-      {activeView === 'broadcast' ? <BroadcastView /> : null}
-      {activeView === 'playlists' ? <PlaylistsView /> : null}
-      {activeView === 'files' ? <FilesView /> : null}
-      {activeView === 'schedules' ? <SchedulesView /> : null}
+      {activeView === 'overview' ? <OverviewView /> : null}
       {activeView === 'devices' ? <DevicesView /> : null}
-      {activeView === 'tts' ? <TtsView /> : null}
+      {activeView === 'schedules' ? (
+        <ScheduleManagementView
+          schedules={<SchedulesView embedded />}
+          playlists={<PlaylistsView embedded />}
+          files={<FilesView embedded />}
+        />
+      ) : null}
+      {activeView === 'live' ? <BroadcastView /> : null}
+      {activeView === 'reports' ? <ReportsView /> : null}
     </Shell>
   );
 }

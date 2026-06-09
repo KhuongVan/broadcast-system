@@ -5,7 +5,11 @@ import type { AudioFile, Playlist } from '../lib/types';
 import { DataState } from './DataState';
 import { Panel } from './Panel';
 
-export function PlaylistsView() {
+type PlaylistsViewProps = {
+  embedded?: boolean;
+};
+
+export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [files, setFiles] = useState<AudioFile[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -123,7 +127,7 @@ export function PlaylistsView() {
 
   return (
     <Panel
-      title="Danh sách phát"
+      title={embedded ? 'Danh sách phát' : 'Danh sách phát'}
       description="Tạo playlist, đổi tên và sắp file âm thanh dùng cho lịch phát."
       actions={
         <form className="inline-form" onSubmit={createPlaylist}>

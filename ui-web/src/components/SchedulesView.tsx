@@ -22,7 +22,11 @@ const emptyForm: ScheduleInput = {
   enabled: true,
 };
 
-export function SchedulesView() {
+type SchedulesViewProps = {
+  embedded?: boolean;
+};
+
+export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [files, setFiles] = useState<AudioFile[]>([]);
@@ -153,7 +157,7 @@ export function SchedulesView() {
   }, []);
 
   return (
-    <Panel title="Lịch phát" description="Tạo, sửa, kiểm tra URL và quản lý lịch tự động.">
+    <Panel title={embedded ? 'Lịch phát' : 'Lịch phát'} description="Tạo, sửa, kiểm tra URL và quản lý lịch tự động.">
       <DataState loading={loading} error={error} empty={!schedules.length && !playlists.length && !files.length} emptyText="Chưa có dữ liệu lịch phát." />
       {!loading ? (
         <div className="split-layout">

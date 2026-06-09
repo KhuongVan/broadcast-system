@@ -4,7 +4,11 @@ import { formatBytes, formatDateTime } from '../lib/format';
 import type { AudioFile } from '../lib/types';
 import { Panel } from './Panel';
 
-export function FilesView() {
+type FilesViewProps = {
+  embedded?: boolean;
+};
+
+export function FilesView({ embedded = false }: FilesViewProps) {
   const [files, setFiles] = useState<AudioFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -46,7 +50,7 @@ export function FilesView() {
 
   return (
     <Panel
-      title="Kho âm thanh"
+      title={embedded ? 'Kho âm thanh' : 'Kho âm thanh'}
       description="Upload và xem các file âm thanh đã lưu."
       actions={
         <label className="file-input">

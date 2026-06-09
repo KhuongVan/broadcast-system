@@ -142,7 +142,7 @@ export function BroadcastView() {
   }
 
   return (
-    <Panel title="Điều khiển phát" description="Phát file, live mic và theo dõi trạng thái lịch realtime qua Socket.IO.">
+    <Panel title="Phát trực tiếp" description="Phát file, live mic và theo dõi trạng thái lịch realtime qua Socket.IO.">
       <DataState loading={loading} error="" empty={!files.length} emptyText="Chưa có file âm thanh để phát." />
       <div className="broadcast-grid">
         <div className="detail-panel form-panel">
