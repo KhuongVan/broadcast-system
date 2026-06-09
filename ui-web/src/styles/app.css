@@ -809,6 +809,48 @@ audio {
   max-width: 680px;
 }
 
+.live-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.live-page {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.live-modal-form {
+  gap: 18px;
+}
+
+.required {
+  color: #f43f5e;
+}
+
+.radio-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+
+.radio-option {
+  align-items: center;
+  color: #26364f;
+  display: inline-flex !important;
+  font-size: 18px;
+  gap: 10px !important;
+}
+
+.radio-option input {
+  min-height: auto;
+  width: auto;
+}
+
 .section-toolbar {
   align-items: center;
   display: flex;
@@ -866,6 +908,15 @@ audio {
   max-height: calc(100vh - 140px);
   overflow: auto;
   padding: 20px;
+}
+
+.modal-footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  padding-top: 8px;
 }
 
 .bar-row {

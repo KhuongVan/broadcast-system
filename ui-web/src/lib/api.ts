@@ -2,6 +2,8 @@ import type {
   AudioFile,
   Device,
   DeviceInput,
+  LiveBroadcastCreateInput,
+  LiveBroadcastSession,
   Playlist,
   Schedule,
   ScheduleInput,
@@ -147,6 +149,26 @@ export const adminApi = {
     api<{ device: Device }>(`/api/devices/${deviceId}/sync-schedule`, {
       method: 'POST',
       json: { scheduleId },
+    }),
+  listLiveBroadcasts: () => api<{ sessions: LiveBroadcastSession[] }>('/api/live-broadcasts'),
+  createLiveBroadcast: (input: LiveBroadcastCreateInput) =>
+    api<{ session: LiveBroadcastSession }>('/api/live-broadcasts', {
+      method: 'POST',
+      json: input,
+    }),
+  finishLiveBroadcast: (sessionId: string, message?: string) =>
+    api<{ session: LiveBroadcastSession }>(`/api/live-broadcasts/${sessionId}/finish`, {
+      method: 'PUT',
+      json: { message },
+    }),
+  failLiveBroadcast: (sessionId: string, message?: string) =>
+    api<{ session: LiveBroadcastSession }>(`/api/live-broadcasts/${sessionId}/fail`, {
+      method: 'PUT',
+      json: { message },
+    }),
+  deleteLiveBroadcast: (sessionId: string) =>
+    api<{ session: LiveBroadcastSession }>(`/api/live-broadcasts/${sessionId}`, {
+      method: 'DELETE',
     }),
   listTtsVoices: () => api<TtsVoicesResponse>('/api/tts/voices'),
   generateTts: (input: TtsGenerateInput) =>

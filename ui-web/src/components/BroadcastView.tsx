@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { adminApi } from '../lib/api';
-import type { AudioFile, ScheduleStatus } from '../lib/types';
+import { formatDateTime } from '../lib/format';
+import type { Device, LiveBroadcastSession, LiveBroadcastTargetType, ScheduleStatus } from '../lib/types';
 import { DataState } from './DataState';
+import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { StatusBadge } from './StatusBadge';
 
@@ -12,21 +14,40 @@ type AdminStatus = {
   streamVersion?: number;
 };
 
+type MicOption = {
+  deviceId: string;
+  label: string;
+};
+
+const defaultMic: MicOption = { deviceId: 'default', label: 'Micro mặc định' };
+
 export function BroadcastView() {
-  const [files, setFiles] = useState<AudioFile[]>([]);
-  const [fileId, setFileId] = useState('');
+  const [sessions, setSessions] = useState<LiveBroadcastSession[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [scheduleStatus, setScheduleStatus] = useState<ScheduleStatus>({ activeSchedule: null, pausedSchedule: null });
-  const [micActive, setMicActive] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [targetType, setTargetType] = useState<LiveBroadcastTargetType>('DEVICE');
+  const [targetArea, setTargetArea] = useState('');
+  const [targetDeviceId, setTargetDeviceId] = useState('');
+  const [micOptions, setMicOptions] = useState<MicOption[]>([defaultMic]);
+  const [micDeviceId, setMicDeviceId] = useState(defaultMic.deviceId);
   const socketRef = useRef<Socket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
 
-  const selectedFile = useMemo(() => files.find((file) => file.fileId === fileId) || null, [files, fileId]);
+  const areas = useMemo(() => {
+    const names = devices.map((device) => device.area).filter((value): value is string => Boolean(value?.trim()));
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+  }, [devices]);
+
+  const activeSession = useMemo(() => sessions.find((session) => session.status === 'STARTED') || null, [sessions]);
 
   useEffect(() => {
     const socket = io('/', { withCredentials: true });
@@ -43,13 +64,12 @@ export function BroadcastView() {
       setError('');
     });
     socket.on('admin_error', (payload: { message?: string }) => {
-      setError(payload.message || 'Socket báo lỗi.');
+      const message = payload.message || 'Socket báo lỗi.';
+      setError(message);
       setBusy(false);
+      void failActiveSession(message);
     });
     socket.on('SCHEDULE_STATUS', (payload: ScheduleStatus) => setScheduleStatus(payload));
-    socket.on('FILE_AVAILABLE', (file: AudioFile) => {
-      setFiles((current) => (current.some((item) => item.fileId === file.fileId) ? current : [file, ...current]));
-    });
 
     return () => {
       stopRecorder();
@@ -59,22 +79,49 @@ export function BroadcastView() {
   }, []);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError('');
-      try {
-        const data = await adminApi.listFiles();
-        setFiles(data.files);
-        setFileId(data.files[0]?.fileId || '');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Không tải được kho âm thanh.');
-      } finally {
-        setLoading(false);
-      }
-    }
-
     void load();
+    void loadMicrophones();
   }, []);
+
+  useEffect(() => {
+    if (!targetArea && areas[0]) setTargetArea(areas[0]);
+  }, [areas, targetArea]);
+
+  useEffect(() => {
+    if (!targetDeviceId && devices[0]) setTargetDeviceId(devices[0].deviceId);
+  }, [devices, targetDeviceId]);
+
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      const [sessionData, deviceData] = await Promise.all([adminApi.listLiveBroadcasts(), adminApi.listDevices()]);
+      setSessions(sessionData.sessions);
+      setDevices(deviceData.devices);
+      activeSessionIdRef.current = sessionData.sessions.find((session) => session.status === 'STARTED')?.sessionId || null;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không tải được dữ liệu phát trực tiếp.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadMicrophones() {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices
+        .filter((device) => device.kind === 'audioinput')
+        .map((device, index) => ({ deviceId: device.deviceId || 'default', label: device.label || `Micro ${index + 1}` }));
+      if (audioInputs.length) {
+        setMicOptions(audioInputs);
+        setMicDeviceId(audioInputs[0].deviceId);
+      }
+    } catch {
+      setMicOptions([defaultMic]);
+      setMicDeviceId(defaultMic.deviceId);
+    }
+  }
 
   function emit(event: string, payload?: unknown) {
     if (!socketRef.current?.connected) {
@@ -87,42 +134,69 @@ export function BroadcastView() {
     return true;
   }
 
-  function playCached(resetPosition: boolean) {
-    if (!fileId) return;
-    emit('admin_play_cached', { fileId, resetPosition });
-  }
+  async function startLive(event: FormEvent) {
+    event.preventDefault();
+    if (!title.trim() || busy) return;
 
-  function playHlsFile(resetPosition: boolean) {
-    if (!fileId) return;
-    emit('admin_play_hls_file', { fileId, resetPosition });
-  }
+    const target = getTarget();
+    if (!target) {
+      setError(targetType === 'DEVICE' ? 'Vui lòng chọn thiết bị phát.' : 'Vui lòng chọn địa bàn phát.');
+      return;
+    }
 
-  async function startLiveMic() {
-    if (!emit('admin_play_live')) return;
+    setBusy(true);
+    setError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: pickMimeType() });
+      const constraints: MediaStreamConstraints = {
+        audio: micDeviceId && micDeviceId !== 'default' ? { deviceId: { exact: micDeviceId } } : true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const micLabel = micOptions.find((option) => option.deviceId === micDeviceId)?.label || defaultMic.label;
+      const data = await adminApi.createLiveBroadcast({
+        title: title.trim(),
+        targetType,
+        targetArea: targetType === 'AREA' ? target.id : null,
+        targetDeviceIds: targetType === 'DEVICE' ? [target.id] : [],
+        targetLabel: target.label,
+        micLabel,
+        startedBy: 'Admin',
+      });
+
+      activeSessionIdRef.current = data.session.sessionId;
+      setSessions((current) => [data.session, ...current.filter((session) => session.sessionId !== data.session.sessionId)]);
+      setModalOpen(false);
+      setTitle('');
       streamRef.current = stream;
+
+      if (!emit('admin_play_live')) {
+        stopTracks();
+        await failActiveSession('Socket chưa kết nối.');
+        return;
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType: pickMimeType() });
       recorderRef.current = recorder;
-      recorder.ondataavailable = async (event) => {
-        if (event.data.size && socketRef.current?.connected) {
-          socketRef.current.emit('admin_mic_chunk', await event.data.arrayBuffer());
+      recorder.ondataavailable = async (chunkEvent) => {
+        if (chunkEvent.data.size && socketRef.current?.connected) {
+          socketRef.current.emit('admin_mic_chunk', await chunkEvent.data.arrayBuffer());
         }
       };
       recorder.onstop = stopTracks;
       recorder.start(500);
-      setMicActive(true);
+      void loadMicrophones();
     } catch (err) {
-      setMicActive(false);
+      stopTracks();
+      const message = err instanceof Error ? err.message : 'Không bắt đầu được phát trực tiếp.';
+      setError(message);
+      await failActiveSession(message);
       setBusy(false);
-      emit('admin_stop');
-      setError(err instanceof Error ? err.message : 'Trình duyệt không cấp quyền micro.');
     }
   }
 
-  function stopAll() {
+  async function stopLive() {
     stopRecorder();
     emit('admin_stop');
+    await finishActiveSession();
   }
 
   function stopRecorder() {
@@ -133,7 +207,6 @@ export function BroadcastView() {
       stopTracks();
     }
     recorderRef.current = null;
-    setMicActive(false);
   }
 
   function stopTracks() {
@@ -141,79 +214,225 @@ export function BroadcastView() {
     streamRef.current = null;
   }
 
+  async function finishActiveSession() {
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) return;
+    try {
+      const data = await adminApi.finishLiveBroadcast(sessionId, 'Kết thúc phát trực tiếp.');
+      replaceSession(data.session);
+      activeSessionIdRef.current = null;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không cập nhật được phiên phát.');
+    }
+  }
+
+  async function failActiveSession(message: string) {
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) return;
+    try {
+      const data = await adminApi.failLiveBroadcast(sessionId, message);
+      replaceSession(data.session);
+      activeSessionIdRef.current = null;
+    } catch {
+      activeSessionIdRef.current = null;
+    }
+  }
+
+  async function deleteSession(sessionId: string) {
+    if (!confirm('Xóa phiên phát này khỏi danh sách?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      const data = await adminApi.deleteLiveBroadcast(sessionId);
+      replaceSession(data.session);
+      if (activeSessionIdRef.current === sessionId) activeSessionIdRef.current = null;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không xóa được phiên phát.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function replaceSession(session: LiveBroadcastSession) {
+    setSessions((current) => current.map((item) => (item.sessionId === session.sessionId ? session : item)));
+  }
+
+  function getTarget() {
+    if (targetType === 'AREA') {
+      const area = targetArea || areas[0];
+      return area ? { id: area, label: area } : null;
+    }
+
+    const device = devices.find((item) => item.deviceId === targetDeviceId);
+    return device ? { id: device.deviceId, label: device.name } : null;
+  }
+
+  function exportCsv() {
+    const rows = [
+      ['Tiêu đề', 'Phạm vi', 'Phát lúc', 'Kết thúc', 'Thời gian phát', 'Trạng thái', 'Phát bởi'],
+      ...sessions.map((session) => [
+        session.title,
+        session.targetLabel,
+        formatDateTime(session.startedAt),
+        formatDateTime(session.endedAt),
+        formatDuration(session),
+        statusLabel(session.status),
+        session.startedBy || '',
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'phat-truc-tiep.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
-    <Panel title="Phát trực tiếp" description="Phát file, live mic và theo dõi trạng thái lịch realtime qua Socket.IO.">
-      <DataState loading={loading} error="" empty={!files.length} emptyText="Chưa có file âm thanh để phát." />
-      <div className="broadcast-grid">
-        <div className="detail-panel form-panel">
-          <h3>Trạng thái realtime</h3>
+    <Panel
+      title="Phát trực tiếp"
+      description="Quản lý phiên live mic và lịch sử phát trực tiếp."
+      actions={
+        <div className="live-toolbar">
+          <button className="ghost icon-btn" disabled={loading} onClick={() => void load()} title="Tải lại" type="button">
+            ↻
+          </button>
+          <button className="primary" disabled={!sessions.length} onClick={exportCsv} type="button">
+            Xuất dữ liệu
+          </button>
+          <button className="primary" disabled={Boolean(activeSession)} onClick={() => setModalOpen(true)} type="button">
+            + Thêm mới
+          </button>
+        </div>
+      }
+    >
+      <DataState loading={loading} error={error} empty={!sessions.length} emptyText="Chưa có phiên phát trực tiếp." />
+      {!loading ? (
+        <div className="live-page">
           <div className="status-line">
             <StatusBadge tone={connected ? 'ok' : 'danger'}>{connected ? 'Socket connected' : 'Socket offline'}</StatusBadge>
             {status ? <span>{status.type}: {status.status}{status.streamVersion ? ` #${status.streamVersion}` : ''}</span> : null}
+            <span>Lịch đang phát: {scheduleStatus.activeSchedule?.name || 'Không có'}</span>
           </div>
-          {error ? <div className="state error compact">{error}</div> : null}
-          <div className="mini-list">
-            <div className="mini-list-item">
-              <div>
-                <strong>Lịch đang phát</strong>
-                <div className="subtext">{scheduleStatus.activeSchedule?.name || 'Không có'}</div>
-              </div>
-              <button className="ghost" disabled={busy || !scheduleStatus.activeSchedule} onClick={() => emit('admin_pause_schedule')} type="button">
-                Tạm dừng
-              </button>
-            </div>
-            <div className="mini-list-item">
-              <div>
-                <strong>Lịch đang tạm dừng</strong>
-                <div className="subtext">{scheduleStatus.pausedSchedule?.name || 'Không có'}</div>
-              </div>
-              <button className="ghost" disabled={busy || !scheduleStatus.pausedSchedule} onClick={() => emit('admin_resume_schedule')} type="button">
-                Phát tiếp
-              </button>
-            </div>
-          </div>
-        </div>
 
-        <div className="detail-panel form-panel">
-          <h3>Phát file âm thanh</h3>
-          <label>
-            File
-            <select value={fileId} onChange={(event) => setFileId(event.target.value)}>
-              <option value="">Chọn file</option>
-              {files.map((file) => (
-                <option key={file.fileId} value={file.fileId}>
-                  {file.originalName}
-                </option>
-              ))}
-            </select>
-          </label>
-          {selectedFile ? <audio controls src={selectedFile.url} /> : null}
-          <div className="row-actions">
-            <button className="primary" disabled={busy || !fileId} onClick={() => playHlsFile(false)} type="button">
-              Phát HLS
-            </button>
-            <button className="ghost" disabled={busy || !fileId} onClick={() => playHlsFile(true)} type="button">
-              Phát từ đầu
-            </button>
-            <button className="ghost" disabled={busy || !fileId} onClick={() => playCached(false)} type="button">
-              Phát cached
-            </button>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>STT</th>
+                  <th>Tiêu đề</th>
+                  <th>Địa bàn/Thiết bị phát</th>
+                  <th>Phát lúc</th>
+                  <th>Thời gian phát</th>
+                  <th>Trạng thái</th>
+                  <th>Phát bởi</th>
+                  <th>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((session, index) => (
+                  <tr key={session.sessionId}>
+                    <td>{index + 1}</td>
+                    <td>
+                      <strong>{session.title}</strong>
+                      {session.micLabel ? <div className="subtext">{session.micLabel}</div> : null}
+                    </td>
+                    <td>{session.targetLabel}</td>
+                    <td>{formatDateTime(session.startedAt)}</td>
+                    <td>{formatDuration(session)}</td>
+                    <td>
+                      <StatusBadge tone={statusTone(session.status)}>{statusLabel(session.status)}</StatusBadge>
+                    </td>
+                    <td>{session.startedBy || 'Admin'}</td>
+                    <td>
+                      <div className="row-actions">
+                        {session.status === 'STARTED' ? (
+                          <button className="ghost icon-btn" disabled={busy} onClick={() => void stopLive()} title="Dừng phát" type="button">
+                            ■
+                          </button>
+                        ) : null}
+                        <button className="danger icon-btn" disabled={busy || session.status === 'DELETED'} onClick={() => void deleteSession(session.sessionId)} title="Xóa" type="button">
+                          Xóa
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
 
-        <div className="detail-panel form-panel">
-          <h3>Live mic</h3>
-          <p className="subtext">Live mic cần HTTPS hoặc localhost để trình duyệt cấp quyền micro.</p>
-          <div className="row-actions">
-            <button className="primary" disabled={busy || micActive} onClick={() => void startLiveMic()} type="button">
-              Bắt đầu live
-            </button>
-            <button className="danger" disabled={busy && !micActive} onClick={stopAll} type="button">
-              Dừng tất cả
-            </button>
-          </div>
+          {modalOpen ? (
+            <Modal
+              title="Phát trực tiếp"
+              onClose={() => {
+                setModalOpen(false);
+                setTitle('');
+              }}
+            >
+              <form className="form-panel live-modal-form" onSubmit={startLive}>
+                <label>
+                  Tiêu đề <span className="required">*</span>
+                  <input placeholder="Tiêu đề" value={title} onChange={(event) => setTitle(event.target.value)} required />
+                </label>
+
+                <div className="radio-row">
+                  <label className="radio-option">
+                    <input checked={targetType === 'AREA'} onChange={() => setTargetType('AREA')} type="radio" />
+                    Địa bàn phát
+                  </label>
+                  <label className="radio-option">
+                    <input checked={targetType === 'DEVICE'} onChange={() => setTargetType('DEVICE')} type="radio" />
+                    Thiết bị phát
+                  </label>
+                </div>
+
+                {targetType === 'AREA' ? (
+                  <select value={targetArea} onChange={(event) => setTargetArea(event.target.value)} required>
+                    <option value="">Chọn địa bàn phát</option>
+                    {areas.map((area) => (
+                      <option key={area} value={area}>
+                        {area}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select value={targetDeviceId} onChange={(event) => setTargetDeviceId(event.target.value)} required>
+                    <option value="">Chọn thiết bị phát</option>
+                    {devices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.name} - {device.area || 'Chưa phân khu'}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <label>
+                  Chọn Mic <span className="required">*</span>
+                  <select value={micDeviceId} onChange={(event) => setMicDeviceId(event.target.value)}>
+                    {micOptions.map((option) => (
+                      <option key={option.deviceId} value={option.deviceId}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="modal-footer">
+                  <button className="ghost" onClick={() => setModalOpen(false)} type="button">
+                    Hủy bỏ
+                  </button>
+                  <button className="primary" disabled={busy || !title.trim()} type="submit">
+                    Bắt đầu phát
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          ) : null}
         </div>
-      </div>
+      ) : null}
     </Panel>
   );
 }
@@ -221,4 +440,31 @@ export function BroadcastView() {
 function pickMimeType() {
   const preferred = 'audio/webm;codecs=opus';
   return MediaRecorder.isTypeSupported(preferred) ? preferred : 'audio/webm';
+}
+
+function statusLabel(status: LiveBroadcastSession['status']) {
+  return {
+    STARTED: 'Đang phát',
+    FINISHED: 'Kết thúc',
+    FAILED: 'Lỗi',
+    DELETED: 'Đã xóa',
+  }[status];
+}
+
+function statusTone(status: LiveBroadcastSession['status']) {
+  if (status === 'STARTED') return 'ok';
+  if (status === 'FAILED') return 'danger';
+  if (status === 'DELETED') return 'warn';
+  return 'neutral';
+}
+
+function formatDuration(session: LiveBroadcastSession) {
+  const end = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
+  const start = new Date(session.startedAt).getTime();
+  const totalSeconds = Math.max(Math.floor((end - start) / 1000), 0);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes && seconds) return `${minutes} phút ${seconds} giây`;
+  if (minutes) return `${minutes} phút`;
+  return `${seconds} giây`;
 }

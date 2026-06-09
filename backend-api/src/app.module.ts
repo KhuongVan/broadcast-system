@@ -4,6 +4,7 @@ import { AudioFilesModule } from './audio-files/audio-files.module';
 import { BroadcastModule } from './broadcast/broadcast.module';
 import { DeviceClientModule } from './device-client/device-client.module';
 import { DevicesModule } from './devices/devices.module';
+import { LiveBroadcastsModule } from './live-broadcasts/live-broadcasts.module';
 import { MediaModule } from './media/media.module';
 import { PagesController } from './pages/pages.controller';
 import { PlaylistsModule } from './playlists/playlists.module';
@@ -19,6 +20,7 @@ import { TtsModule } from './tts/tts.module';
     PlaylistsModule,
     SchedulesModule,
     DevicesModule,
+    LiveBroadcastsModule,
     DeviceClientModule,
     MediaModule,
     BroadcastModule,

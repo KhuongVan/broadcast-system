@@ -6,6 +6,7 @@ import WebSocket from 'ws';
 import { AudioFileRecord } from '../audio-files/audio-file.types';
 import { config } from '../config';
 import { DeviceInput, DevicePlayStatus, DeviceRecord, DeviceSyncStatus } from '../devices/device.types';
+import { LiveBroadcastCreateInput, LiveBroadcastRecord, LiveBroadcastStatus } from '../live-broadcasts/live-broadcast.types';
 import { PlaylistItemRecord, PlaylistRecord } from '../playlists/playlist.types';
 import { BroadcastScheduleRecord, ScheduleInput, ScheduleRunLogRecord } from '../schedules/schedule.types';
 
@@ -107,6 +108,23 @@ type DeviceMicTestUploadRow = {
   duration_seconds: number | null;
   message: string | null;
   created_at: string;
+};
+
+type LiveBroadcastSessionRow = {
+  session_id: string;
+  title: string;
+  target_type: 'AREA' | 'DEVICE';
+  target_area: string | null;
+  target_device_ids: string[] | null;
+  target_label: string;
+  mic_label: string | null;
+  started_at: string;
+  ended_at: string | null;
+  status: LiveBroadcastStatus;
+  started_by: string | null;
+  message: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type DeviceClientSchedulePayload = {
@@ -492,6 +510,69 @@ export class StorageService {
     }
 
     return this.toScheduleRunLogRecord(data as ScheduleRunLogRow);
+  }
+
+  async listLiveBroadcastSessions() {
+    const { data, error } = await this.supabase
+      .from('live_broadcast_sessions')
+      .select('*')
+      .order('started_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Khong doc duoc live_broadcast_sessions: ${error.message}`);
+    }
+
+    return ((data || []) as LiveBroadcastSessionRow[]).map((row) => this.toLiveBroadcastRecord(row));
+  }
+
+  async createLiveBroadcastSession(input: LiveBroadcastCreateInput) {
+    const now = new Date().toISOString();
+    const { data, error } = await this.supabase
+      .from('live_broadcast_sessions')
+      .insert({
+        title: input.title,
+        target_type: input.targetType,
+        target_area: input.targetArea || null,
+        target_device_ids: input.targetDeviceIds || [],
+        target_label: input.targetLabel,
+        mic_label: input.micLabel || null,
+        started_at: now,
+        ended_at: null,
+        status: 'STARTED',
+        started_by: input.startedBy || null,
+        message: null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(`Khong tao duoc live_broadcast_sessions: ${error.message}`);
+    }
+
+    return this.toLiveBroadcastRecord(data as LiveBroadcastSessionRow);
+  }
+
+  async finishLiveBroadcastSession(sessionId: string, status: Exclude<LiveBroadcastStatus, 'STARTED'>, message?: string | null) {
+    const now = new Date().toISOString();
+    const { data, error } = await this.supabase
+      .from('live_broadcast_sessions')
+      .update({
+        ended_at: now,
+        status,
+        message: message || null,
+        updated_at: now,
+      })
+      .eq('session_id', sessionId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc live_broadcast_sessions: ${error.message}`);
+    }
+
+    return data ? this.toLiveBroadcastRecord(data as LiveBroadcastSessionRow) : null;
   }
 
   async listDevices() {
@@ -967,6 +1048,25 @@ export class StorageService {
       endedAt: row.ended_at,
       status: row.status,
       message: row.message,
+    };
+  }
+
+  private toLiveBroadcastRecord(row: LiveBroadcastSessionRow): LiveBroadcastRecord {
+    return {
+      sessionId: row.session_id,
+      title: row.title,
+      targetType: row.target_type,
+      targetArea: row.target_area,
+      targetDeviceIds: Array.isArray(row.target_device_ids) ? row.target_device_ids : [],
+      targetLabel: row.target_label,
+      micLabel: row.mic_label,
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
+      status: row.status,
+      startedBy: row.started_by,
+      message: row.message,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
   }
 
