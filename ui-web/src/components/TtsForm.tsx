@@ -75,16 +75,17 @@ export function TtsForm({ onGenerated }: TtsFormProps) {
     <>
       <DataState loading={loading} error={error} empty={!voices} emptyText="Chưa có cấu hình TTS." />
       {voices ? (
-        <div className="tts-form-layout">
-          <form className="detail-panel form-panel" onSubmit={generate}>
-            <h3>Tạo âm thanh</h3>
-            <label>
-              Tên file
-              <input value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="Ví dụ: Thông báo sáng" />
-            </label>
-            <div className="form-grid">
-              <label>
-                Giọng đọc
+        <div className="tts-modern-wrapper">
+          <div className="tts-modern-card">
+            <h2 className="tts-modern-title">Chuyển đổi giọng nói</h2>
+            <form className="tts-modern-form" onSubmit={generate}>
+              <div className="tts-modern-field">
+                <label>Tiêu đề file:</label>
+                <input value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="Ví dụ: Thông báo khẩn cấp" />
+              </div>
+
+              <div className="tts-modern-field">
+                <label>Giọng đọc:</label>
                 <select value={form.voice} onChange={(event) => update('voice', event.target.value)}>
                   {voices.voices.map((voice) => (
                     <option key={voice.code} value={voice.code}>
@@ -92,52 +93,57 @@ export function TtsForm({ onGenerated }: TtsFormProps) {
                     </option>
                   ))}
                 </select>
-              </label>
-              <label>
-                Tốc độ
-                <select value={form.speed} onChange={(event) => update('speed', event.target.value)}>
-                  <option value="-3">-3 rất chậm</option>
-                  <option value="-2">-2 chậm</option>
-                  <option value="-1">-1 hơi chậm</option>
-                  <option value="0">0 mặc định</option>
-                  <option value="+1">+1 hơi nhanh</option>
-                  <option value="+2">+2 nhanh</option>
-                  <option value="+3">+3 rất nhanh</option>
-                </select>
-              </label>
-            </div>
-            <label>
-              Nội dung
-              <textarea
-                value={form.text}
-                onChange={(event) => update('text', event.target.value)}
-                placeholder="Nhập nội dung cần chuyển thành giọng nói..."
-                required
-                rows={9}
-              />
-            </label>
-            <div className="row-actions">
-              <button className="primary" disabled={saving || form.text.trim().length < 3 || !form.voice}>
-                {saving ? 'Đang tạo...' : 'Tạo âm thanh'}
-              </button>
-            </div>
-            {message ? <div className="state compact">{message}</div> : null}
-          </form>
+              </div>
 
-          <div className="detail-panel form-panel">
-            <h3>File mới tạo</h3>
-            {latestFile ? (
-              <>
-                <strong>{latestFile.originalName}</strong>
-                <p className="subtext">{latestFile.storagePath}</p>
-                <audio controls src={latestFile.url} />
-                <p className="subtext">File này đã nằm trong Kho âm thanh và có thể thêm vào playlist/lịch phát.</p>
-              </>
-            ) : (
-              <div className="state compact">Chưa tạo file trong phiên này.</div>
-            )}
-            <p className="subtext">Provider: {voices.provider}. Giọng mặc định: {voices.defaultVoice}.</p>
+              <div className="tts-modern-field">
+                <label>Tốc độ:</label>
+                <select value={form.speed} onChange={(event) => update('speed', event.target.value)}>
+                  <option value="-3">-3 (rất chậm)</option>
+                  <option value="-2">-2 (chậm)</option>
+                  <option value="-1">-1 (hơi chậm)</option>
+                  <option value="0">Bình thường</option>
+                  <option value="+1">+1 (hơi nhanh)</option>
+                  <option value="+2">+2 (nhanh)</option>
+                  <option value="+3">+3 (rất nhanh)</option>
+                </select>
+              </div>
+
+              <div className="tts-modern-field tts-modern-textarea">
+                <label>Nội dung:</label>
+                <textarea
+                  value={form.text}
+                  onChange={(event) => update('text', event.target.value)}
+                  placeholder="Nhập nội dung cần chuyển thành giọng nói..."
+                  required
+                  rows={7}
+                />
+              </div>
+
+              <div className="tts-modern-info">
+                Tạo xong sẽ lưu file MP3 vào Kho âm thanh.
+              </div>
+
+              <div className="tts-modern-actions">
+                <button className="primary" disabled={saving || form.text.trim().length < 3 || !form.voice} type="submit">
+                  {saving ? 'Đang tạo...' : 'Tạo âm thanh'}
+                </button>
+                <button className="danger" type="button" onClick={() => setForm(initialForm)}>
+                  Hủy bỏ
+                </button>
+              </div>
+              {message ? <div className="state compact">{message}</div> : null}
+            </form>
           </div>
+          
+          {latestFile && (
+            <div className="tts-modern-latest">
+              <h3>File mới tạo</h3>
+              <strong>{latestFile.originalName}</strong>
+              <p className="subtext">{latestFile.storagePath}</p>
+              <audio controls src={latestFile.url} />
+              <p className="subtext">File này đã nằm trong Kho âm thanh và có thể thêm vào playlist/lịch phát.</p>
+            </div>
+          )}
         </div>
       ) : null}
     </>
