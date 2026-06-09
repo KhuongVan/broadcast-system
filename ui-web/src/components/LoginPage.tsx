@@ -29,7 +29,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   return (
     <main className="login-screen">
       <form className="login-panel" onSubmit={handleSubmit}>
-        <p className="login-brand">Hệ thống phát thanh thông minh</p>
+        <p className="login-brand">Phát thanh nhanh</p>
         <h1>Đăng nhập quản trị</h1>
         <label>
           Tên đăng nhập

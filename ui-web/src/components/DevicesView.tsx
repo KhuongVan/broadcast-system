@@ -6,7 +6,12 @@ import { DataState } from './DataState';
 import { Panel } from './Panel';
 import { StatusBadge } from './StatusBadge';
 
-type DeviceTab = 'operate' | 'settings' | 'logs';
+export type DeviceSectionKey = 'operate' | 'settings' | 'logs';
+
+type DevicesViewProps = {
+  activeSection: DeviceSectionKey;
+  onChangeSection: (section: DeviceSectionKey) => void;
+};
 
 const emptyDevice: DeviceInput = {
   name: '',
@@ -15,14 +20,13 @@ const emptyDevice: DeviceInput = {
   connectionType: '4G',
 };
 
-export function DevicesView() {
+export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [form, setForm] = useState<DeviceInput>(emptyDevice);
   const [editingId, setEditingId] = useState('');
   const [selectedScheduleId, setSelectedScheduleId] = useState('');
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<DeviceTab>('operate');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,7 +76,7 @@ export function DevicesView() {
   }
 
   function edit(device: Device) {
-    setActiveTab('settings');
+    onChangeSection('settings');
     setEditingId(device.deviceId);
     setForm({
       name: device.name,
@@ -164,19 +168,7 @@ export function DevicesView() {
       <DataState loading={loading} error={error} empty={!devices.length} emptyText="Chưa có thiết bị." />
       {!loading ? (
         <div className="device-page">
-          <div className="subtab-bar">
-            <button className={activeTab === 'operate' ? 'subtab active' : 'subtab'} onClick={() => setActiveTab('operate')} type="button">
-              Vận hành
-            </button>
-            <button className={activeTab === 'settings' ? 'subtab active' : 'subtab'} onClick={() => setActiveTab('settings')} type="button">
-              Cài đặt
-            </button>
-            <button className={activeTab === 'logs' ? 'subtab active' : 'subtab'} onClick={() => setActiveTab('logs')} type="button">
-              Nhật ký
-            </button>
-          </div>
-
-          {activeTab === 'operate' ? (
+          {activeSection === 'operate' ? (
             <div className="device-operate">
               <div className="device-command-panel">
                 <div>
@@ -270,7 +262,7 @@ export function DevicesView() {
             </div>
           ) : null}
 
-          {activeTab === 'settings' ? (
+          {activeSection === 'settings' ? (
             <div className="split-layout">
               <form className="detail-panel form-panel" onSubmit={save}>
                 <h3>{editingId ? 'Sửa thiết bị' : 'Thêm thiết bị'}</h3>
@@ -344,7 +336,7 @@ export function DevicesView() {
             </div>
           ) : null}
 
-          {activeTab === 'logs' ? (
+          {activeSection === 'logs' ? (
             <div className="table-wrap padded-table">
               <table>
                 <thead>

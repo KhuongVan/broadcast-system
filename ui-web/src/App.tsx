@@ -44,9 +44,12 @@ export function App() {
   return (
     <Shell activeView={activeView} session={session} onChangeView={setActiveView} onLogout={() => void logout()}>
       {activeView === 'overview' ? <OverviewView /> : null}
-      {activeView === 'devices' ? <DevicesView /> : null}
-      {activeView === 'schedules' ? (
+      {activeView.startsWith('devices:') ? (
+        <DevicesView activeSection={getDeviceSection(activeView)} onChangeSection={(section) => setActiveView(`devices:${section}`)} />
+      ) : null}
+      {activeView.startsWith('schedules:') ? (
         <ScheduleManagementView
+          activeTab={getScheduleTab(activeView)}
           schedules={<SchedulesView embedded />}
           playlists={<PlaylistsView embedded />}
           files={<FilesView embedded />}
@@ -56,4 +59,16 @@ export function App() {
       {activeView === 'reports' ? <ReportsView /> : null}
     </Shell>
   );
+}
+
+function getDeviceSection(activeView: ViewKey) {
+  if (activeView === 'devices:settings') return 'settings';
+  if (activeView === 'devices:logs') return 'logs';
+  return 'operate';
+}
+
+function getScheduleTab(activeView: ViewKey) {
+  if (activeView === 'schedules:playlists') return 'playlists';
+  if (activeView === 'schedules:files') return 'files';
+  return 'schedules';
 }
