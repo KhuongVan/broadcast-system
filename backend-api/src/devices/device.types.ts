@@ -26,6 +26,8 @@ export type DeviceRecord = {
   playbackMessage: string | null;
   playbackPositionSeconds: number | null;
   playbackUpdatedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -35,4 +37,6 @@ export type DeviceInput = {
   macAddress: string;
   area: string;
   connectionType: DeviceConnectionType;
+  latitude: number | null;
+  longitude: number | null;
 };

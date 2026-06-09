@@ -82,6 +82,8 @@ type DeviceRow = {
   playback_message: string | null;
   playback_position_seconds: number | null;
   playback_updated_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -645,6 +647,8 @@ export class StorageService {
         mac_address: input.macAddress,
         area: input.area,
         connection_type: input.connectionType,
+        latitude: input.latitude,
+        longitude: input.longitude,
         online: false,
         last_seen_at: null,
         play_allowed: true,
@@ -761,6 +765,8 @@ export class StorageService {
         mac_address: input.macAddress,
         area: input.area,
         connection_type: input.connectionType,
+        latitude: input.latitude,
+        longitude: input.longitude,
         updated_at: new Date().toISOString(),
       })
       .eq('device_id', deviceId)
@@ -1097,6 +1103,8 @@ export class StorageService {
       playbackMessage: row.playback_message || null,
       playbackPositionSeconds: row.playback_position_seconds ?? null,
       playbackUpdatedAt: row.playback_updated_at || null,
+      latitude: row.latitude ?? null,
+      longitude: row.longitude ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

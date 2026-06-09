@@ -77,6 +77,8 @@ export type DeviceInput = {
   macAddress: string;
   area: string;
   connectionType: 'LAN' | '4G';
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type Device = {
@@ -101,6 +103,8 @@ export type Device = {
   playbackMessage: string | null;
   playbackPositionSeconds: number | null;
   playbackUpdatedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
   createdAt: string;
   updatedAt: string;
 };

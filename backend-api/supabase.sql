@@ -152,6 +152,12 @@ alter table devices
 add column if not exists deleted_at timestamptz;
 
 alter table devices
+add column if not exists latitude double precision;
+
+alter table devices
+add column if not exists longitude double precision;
+
+alter table devices
 drop constraint if exists devices_mac_address_key;
 
 create unique index if not exists idx_devices_mac_address_active_unique
@@ -220,11 +226,11 @@ create table if not exists device_schedule_assignments (
 create index if not exists idx_device_schedule_assignments_schedule_id
 on device_schedule_assignments(schedule_id);
 
-insert into devices (device_id, name, mac_address, area, connection_type, online, last_seen_at, play_allowed, play_status)
+insert into devices (device_id, name, mac_address, area, connection_type, online, last_seen_at, play_allowed, play_status, latitude, longitude)
 values
-  ('11111111-1111-1111-1111-111111111111', 'Loa Thôn 1', '22:22:E5:6C:16:F4', 'Thôn 1', '4G', true, now() - interval '2 minutes', true, 'IDLE'),
-  ('22222222-2222-2222-2222-222222222222', 'Loa Thôn 5', '22:22:60:29:5D:E3', 'Thôn 5', 'LAN', true, now() - interval '8 minutes', true, 'IDLE'),
-  ('33333333-3333-3333-3333-333333333333', 'Loa Thôn 9', '22:22:9A:47:10:B8', 'Thôn 9', '4G', false, now() - interval '45 minutes', false, 'STOPPED')
+  ('11111111-1111-1111-1111-111111111111', 'Loa Thôn 1', '22:22:E5:6C:16:F4', 'Thôn 1', '4G', true, now() - interval '2 minutes', true, 'IDLE', 11.0168, 106.6293),
+  ('22222222-2222-2222-2222-222222222222', 'Loa Thôn 5', '22:22:60:29:5D:E3', 'Thôn 5', 'LAN', true, now() - interval '8 minutes', true, 'IDLE', 10.9804, 106.6519),
+  ('33333333-3333-3333-3333-333333333333', 'Loa Thôn 9', '22:22:9A:47:10:B8', 'Thôn 9', '4G', false, now() - interval '45 minutes', false, 'STOPPED', 10.9488, 106.6127)
 on conflict (device_id) do nothing;
 
 insert into broadcast_schedules (

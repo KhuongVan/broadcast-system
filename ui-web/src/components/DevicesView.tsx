@@ -7,7 +7,9 @@ import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { StatusBadge } from './StatusBadge';
 
-export type DeviceSectionKey = 'operate' | 'settings' | 'logs';
+import { DeviceMapView } from './DeviceMapView';
+
+export type DeviceSectionKey = 'map' | 'operate' | 'settings' | 'logs';
 
 type DevicesViewProps = {
   activeSection: DeviceSectionKey;
@@ -19,6 +21,8 @@ const emptyDevice: DeviceInput = {
   macAddress: '',
   area: '',
   connectionType: '4G',
+  latitude: null,
+  longitude: null,
 };
 
 export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps) {
@@ -86,6 +90,8 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       macAddress: device.macAddress,
       area: device.area,
       connectionType: device.connectionType,
+      latitude: device.latitude,
+      longitude: device.longitude,
     });
   }
 
@@ -182,6 +188,10 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       <DataState loading={loading} error={error} empty={!devices.length} emptyText="Chưa có thiết bị." />
       {!loading ? (
         <div className="device-page">
+          {activeSection === 'map' ? (
+            <DeviceMapView devices={filteredDevices} stats={stats} />
+          ) : null}
+
           {activeSection === 'operate' ? (
             <div className="device-operate">
               <div className="device-command-panel">
@@ -340,6 +350,14 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                         <option value="4G">4G</option>
                         <option value="LAN">LAN</option>
                       </select>
+                    </label>
+                    <label>
+                      Vĩ độ (Latitude)
+                      <input type="number" step="any" value={form.latitude ?? ''} onChange={(event) => update('latitude', event.target.value ? Number(event.target.value) : null)} placeholder="VD: 10.762622" />
+                    </label>
+                    <label>
+                      Kinh độ (Longitude)
+                      <input type="number" step="any" value={form.longitude ?? ''} onChange={(event) => update('longitude', event.target.value ? Number(event.target.value) : null)} placeholder="VD: 106.660172" />
                     </label>
                     <div className="row-actions">
                       <button className="primary" disabled={saving || !form.name.trim() || !form.macAddress.trim()}>

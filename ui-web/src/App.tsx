@@ -62,6 +62,7 @@ export function App() {
 }
 
 function getDeviceSection(activeView: ViewKey) {
+  if (activeView === 'devices:map') return 'map';
   if (activeView === 'devices:settings') return 'settings';
   if (activeView === 'devices:logs') return 'logs';
   return 'operate';
