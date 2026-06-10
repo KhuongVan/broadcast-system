@@ -38,3 +38,10 @@ export type DeviceClientMicTestUploadBody = {
   durationSeconds?: number | string;
   message?: string;
 };
+
+export type DeviceClientCommandResultBody = {
+  commandId?: string;
+  status?: 'SUCCEEDED' | 'FAILED';
+  appliedVolumeLevel?: number;
+  message?: string;
+};

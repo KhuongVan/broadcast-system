@@ -545,7 +545,7 @@ Loi thuong gap:
 
 ### Get commands
 
-Poll lenh tu backend. MVP hien tai chua co command queue, nen endpoint luon tra `NOOP`.
+Poll lenh tu backend. Neu admin chua gui lenh moi, endpoint tra `NOOP`. Neu admin dieu chinh am luong, endpoint tra `SET_VOLUME`.
 
 ```http
 GET /api/device-client/commands
@@ -565,17 +565,78 @@ Response example:
 }
 ```
 
+Response voi lenh am luong:
+
+```json
+{
+  "serverTime": "2026-06-05T03:04:00.000Z",
+  "deviceId": "11111111-1111-1111-1111-111111111111",
+  "command": {
+    "commandId": "99999999-9999-9999-9999-999999999999",
+    "type": "SET_VOLUME",
+    "payload": {
+      "volumeLevel": 7
+    }
+  }
+}
+```
+
 Notes:
 
-- Android nen van tich hop polling endpoint nay de sau nay nang cap command queue ma khong can doi flow.
-- Cac lenh du kien cho v2: `PLAY_NOW`, `STOP`, `SYNC_SCHEDULE`, `RELOAD_WEBVIEW`.
-- V2 se bo sung ack endpoint rieng neu co command queue.
+- `SET_VOLUME.payload.volumeLevel` la so nguyen tu `0` den `15`.
+- Sau khi ap dung lenh vao thiet bi that, Android phai goi `POST /api/device-client/command-result`.
+- Neu thiet bi khong ap dung duoc am luong, gui `status=FAILED` kem `message`.
 
 cURL:
 
 ```bash
 curl "https://<backend-host>/api/device-client/commands" \
   -H "Authorization: Bearer <deviceToken>"
+```
+
+### Update command result
+
+Bao ket qua thuc thi lenh tu Android ve backend.
+
+```http
+POST /api/device-client/command-result
+Authorization: Bearer <deviceToken>
+Content-Type: application/json
+```
+
+Request thanh cong voi `SET_VOLUME`:
+
+```json
+{
+  "commandId": "99999999-9999-9999-9999-999999999999",
+  "status": "SUCCEEDED",
+  "appliedVolumeLevel": 7,
+  "message": "Volume applied"
+}
+```
+
+Request that bai:
+
+```json
+{
+  "commandId": "99999999-9999-9999-9999-999999999999",
+  "status": "FAILED",
+  "message": "Android volume API failed"
+}
+```
+
+Allowed `status`:
+
+- `SUCCEEDED`
+- `FAILED`
+
+cURL:
+
+```bash
+curl -X POST "https://<backend-host>/api/device-client/command-result" \
+  -H "Authorization: Bearer <deviceToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"commandId":"99999999-9999-9999-9999-999999999999","status":"SUCCEEDED","appliedVolumeLevel":7}'
 ```
 
 ## Data notes
@@ -604,7 +665,12 @@ Mot so response co `device`. Cac field quan trong:
   "batteryLevel": 87,
   "playbackMessage": "Started playback",
   "playbackPositionSeconds": 12,
-  "playbackUpdatedAt": "2026-06-05T03:02:00.000Z"
+  "playbackUpdatedAt": "2026-06-05T03:02:00.000Z",
+  "volumeLevel": 7,
+  "desiredVolumeLevel": 7,
+  "volumeSyncStatus": "SYNCED",
+  "volumeSyncMessage": "Thiet bi da ap dung am luong.",
+  "volumeUpdatedAt": "2026-06-05T03:04:10.000Z"
 }
 ```
 
@@ -613,7 +679,8 @@ Mot so response co `device`. Cac field quan trong:
 - `playStatus`: `IDLE | PLAYING | STOPPED | ERROR`
 - `syncStatus`: `SYNCED | FAILED`
 - `connectionType`: `LAN | 4G | UNKNOWN`
-- `command.type` MVP: `NOOP`
+- `volumeSyncStatus`: `PENDING | SYNCED | FAILED`
+- `command.type`: `NOOP | SET_VOLUME`
 
 ### Android ID va MAC
 

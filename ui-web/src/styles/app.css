@@ -976,6 +976,23 @@ audio {
   padding: 8px 11px;
 }
 
+.volume-control {
+  display: grid;
+  gap: 6px;
+  max-width: 150px;
+}
+
+.volume-control select {
+  background: #fff;
+  border: 1px solid #d8e1ee;
+  border-radius: 8px;
+  color: #172033;
+  font: inherit;
+  min-height: 36px;
+  padding: 0 10px;
+  width: 78px;
+}
+
 .device-command-panel {
   align-items: end;
   background: linear-gradient(135deg, #1359ff, #1631bb);

@@ -32,6 +32,11 @@ export class DevicesService {
     return this.storage.updateDevicePlayAllowed(deviceId, playAllowed);
   }
 
+  async updateVolume(deviceId: string, volumeLevel: unknown) {
+    await this.getDevice(deviceId);
+    return this.storage.updateDeviceVolume(deviceId, this.normalizeVolumeLevel(volumeLevel));
+  }
+
   async playNow(deviceId: string, scheduleId: string) {
     const device = await this.getDevice(deviceId);
     const schedule = await this.storage.getSchedule(scheduleId);
@@ -81,5 +86,13 @@ export class DevicesService {
     if (!macAddress) throw new BadRequestException('Vui long nhap dia chi MAC.');
 
     return { name, macAddress, simNumber, area, connectionType, latitude, longitude };
+  }
+
+  private normalizeVolumeLevel(value: unknown) {
+    const volumeLevel = Number(value);
+    if (!Number.isInteger(volumeLevel) || volumeLevel < 0 || volumeLevel > 15) {
+      throw new BadRequestException('Am luong phai la so nguyen tu 0 den 15.');
+    }
+    return volumeLevel;
   }
 }

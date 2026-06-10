@@ -136,6 +136,11 @@ export const adminApi = {
       method: 'PUT',
       json: { playAllowed },
     }),
+  updateDeviceVolume: (deviceId: string, volumeLevel: number) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}/volume`, {
+      method: 'PUT',
+      json: { volumeLevel },
+    }),
   playDeviceNow: (deviceId: string, scheduleId: string) =>
     api<{ device: Device }>(`/api/devices/${deviceId}/play-now`, {
       method: 'POST',

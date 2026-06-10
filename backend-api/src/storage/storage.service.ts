@@ -5,7 +5,14 @@ import { extname } from 'path';
 import WebSocket from 'ws';
 import { AudioFileRecord } from '../audio-files/audio-file.types';
 import { config } from '../config';
-import { DeviceConnectionType, DeviceInput, DevicePlayStatus, DeviceRecord, DeviceSyncStatus } from '../devices/device.types';
+import {
+  DeviceConnectionType,
+  DeviceInput,
+  DevicePlayStatus,
+  DeviceRecord,
+  DeviceSyncStatus,
+  DeviceVolumeSyncStatus,
+} from '../devices/device.types';
 import { LiveBroadcastCreateInput, LiveBroadcastRecord, LiveBroadcastStatus } from '../live-broadcasts/live-broadcast.types';
 import { PlaylistItemRecord, PlaylistRecord } from '../playlists/playlist.types';
 import { BroadcastScheduleRecord, ScheduleInput, ScheduleRunLogRecord } from '../schedules/schedule.types';
@@ -83,11 +90,45 @@ type DeviceRow = {
   playback_message: string | null;
   playback_position_seconds: number | null;
   playback_updated_at: string | null;
+  volume_level: number | null;
+  desired_volume_level: number | null;
+  volume_sync_status: DeviceVolumeSyncStatus | null;
+  volume_sync_message: string | null;
+  volume_updated_at: string | null;
   latitude: number | null;
   longitude: number | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type DeviceCommandStatus = 'PENDING' | 'DELIVERED' | 'SUCCEEDED' | 'FAILED' | 'SUPERSEDED';
+type DeviceCommandType = 'SET_VOLUME';
+
+type DeviceCommandRow = {
+  command_id: string;
+  device_id: string;
+  type: DeviceCommandType;
+  payload: Record<string, unknown>;
+  status: DeviceCommandStatus;
+  message: string | null;
+  last_delivered_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DeviceCommandRecord = {
+  commandId: string;
+  deviceId: string;
+  type: DeviceCommandType;
+  payload: Record<string, unknown>;
+  status: DeviceCommandStatus;
+  message: string | null;
+  lastDeliveredAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type DeviceScheduleAssignmentRow = {
@@ -826,6 +867,173 @@ export class StorageService {
     return this.toDeviceRecord(data as DeviceRow);
   }
 
+  async updateDeviceVolume(deviceId: string, volumeLevel: number) {
+    const now = new Date().toISOString();
+
+    const { error: supersedeError } = await this.supabase
+      .from('device_commands')
+      .update({
+        status: 'SUPERSEDED',
+        message: 'Da co lenh am luong moi hon.',
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('device_id', deviceId)
+      .eq('type', 'SET_VOLUME')
+      .in('status', ['PENDING', 'DELIVERED']);
+
+    if (supersedeError) {
+      throw new Error(`Khong huy duoc lenh am luong cu: ${supersedeError.message}`);
+    }
+
+    const { error: commandError } = await this.supabase.from('device_commands').insert({
+      device_id: deviceId,
+      type: 'SET_VOLUME',
+      payload: { volumeLevel },
+      status: 'PENDING',
+      updated_at: now,
+    });
+
+    if (commandError) {
+      throw new Error(`Khong tao duoc lenh am luong: ${commandError.message}`);
+    }
+
+    const { data, error } = await this.supabase
+      .from('devices')
+      .update({
+        desired_volume_level: volumeLevel,
+        volume_sync_status: 'PENDING',
+        volume_sync_message: 'Dang cho thiet bi nhan lenh am luong.',
+        volume_updated_at: now,
+        updated_at: now,
+      })
+      .eq('device_id', deviceId)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc am luong thiet bi: ${error.message}`);
+    }
+
+    if (!data) throw new Error('Khong tim thay thiet bi.');
+    return this.toDeviceRecord(data as DeviceRow);
+  }
+
+  async getPendingDeviceCommand(deviceId: string) {
+    const now = new Date().toISOString();
+    const { data, error } = await this.supabase
+      .from('device_commands')
+      .select('*')
+      .eq('device_id', deviceId)
+      .in('status', ['PENDING', 'DELIVERED'])
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong doc duoc lenh thiet bi: ${error.message}`);
+    }
+
+    if (!data) return null;
+
+    const command = data as DeviceCommandRow;
+    if (command.status === 'PENDING') {
+      const { data: delivered, error: updateError } = await this.supabase
+        .from('device_commands')
+        .update({ status: 'DELIVERED', last_delivered_at: now, updated_at: now })
+        .eq('command_id', command.command_id)
+        .select('*')
+        .maybeSingle();
+
+      if (updateError) {
+        throw new Error(`Khong cap nhat duoc trang thai lenh thiet bi: ${updateError.message}`);
+      }
+
+      return delivered ? this.toDeviceCommandRecord(delivered as DeviceCommandRow) : this.toDeviceCommandRecord(command);
+    }
+
+    const { data: redelivered, error: redeliverError } = await this.supabase
+      .from('device_commands')
+      .update({ last_delivered_at: now, updated_at: now })
+      .eq('command_id', command.command_id)
+      .select('*')
+      .maybeSingle();
+
+    if (redeliverError) {
+      throw new Error(`Khong cap nhat duoc thoi diem giao lenh: ${redeliverError.message}`);
+    }
+
+    return redelivered ? this.toDeviceCommandRecord(redelivered as DeviceCommandRow) : this.toDeviceCommandRecord(command);
+  }
+
+  async updateDeviceCommandResult(
+    deviceId: string,
+    commandId: string,
+    result: { status: 'SUCCEEDED' | 'FAILED'; appliedVolumeLevel: number | null; message: string | null },
+  ) {
+    const now = new Date().toISOString();
+    const { data: commandData, error: commandReadError } = await this.supabase
+      .from('device_commands')
+      .select('*')
+      .eq('command_id', commandId)
+      .eq('device_id', deviceId)
+      .maybeSingle();
+
+    if (commandReadError) {
+      throw new Error(`Khong doc duoc lenh thiet bi: ${commandReadError.message}`);
+    }
+
+    if (!commandData) throw new Error('Khong tim thay lenh thiet bi.');
+    const command = commandData as DeviceCommandRow;
+    if (command.status !== 'PENDING' && command.status !== 'DELIVERED') {
+      const device = await this.getDevice(deviceId);
+      if (!device) throw new Error('Khong tim thay thiet bi.');
+      return device;
+    }
+
+    const requestedVolumeLevel = this.getCommandVolumeLevel(command);
+    const synced = result.status === 'SUCCEEDED' && result.appliedVolumeLevel === requestedVolumeLevel;
+
+    const { error: commandUpdateError } = await this.supabase
+      .from('device_commands')
+      .update({
+        status: synced ? 'SUCCEEDED' : 'FAILED',
+        message: result.message,
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('command_id', commandId);
+
+    if (commandUpdateError) {
+      throw new Error(`Khong cap nhat duoc ket qua lenh thiet bi: ${commandUpdateError.message}`);
+    }
+
+    const update: Record<string, unknown> = {
+      volume_sync_status: synced ? 'SYNCED' : 'FAILED',
+      volume_sync_message: result.message || (synced ? 'Thiet bi da ap dung am luong.' : 'Thiet bi ap dung am luong that bai.'),
+      volume_updated_at: now,
+      updated_at: now,
+    };
+
+    if (result.appliedVolumeLevel !== null) update.volume_level = result.appliedVolumeLevel;
+
+    const { data, error } = await this.supabase
+      .from('devices')
+      .update(update)
+      .eq('device_id', deviceId)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc ket qua am luong thiet bi: ${error.message}`);
+    }
+
+    if (!data) throw new Error('Khong tim thay thiet bi.');
+    return this.toDeviceRecord(data as DeviceRow);
+  }
+
   async updateDevicePlayback(
     deviceId: string,
     input: {
@@ -1109,6 +1317,11 @@ export class StorageService {
       playbackMessage: row.playback_message || null,
       playbackPositionSeconds: row.playback_position_seconds ?? null,
       playbackUpdatedAt: row.playback_updated_at || null,
+      volumeLevel: row.volume_level ?? null,
+      desiredVolumeLevel: row.desired_volume_level ?? null,
+      volumeSyncStatus: row.volume_sync_status || null,
+      volumeSyncMessage: row.volume_sync_message || null,
+      volumeUpdatedAt: row.volume_updated_at || null,
       latitude: row.latitude ?? null,
       longitude: row.longitude ?? null,
       createdAt: row.created_at,
@@ -1128,6 +1341,26 @@ export class StorageService {
     }
 
     return data ? (data as DeviceScheduleAssignmentRow) : null;
+  }
+
+  private toDeviceCommandRecord(row: DeviceCommandRow): DeviceCommandRecord {
+    return {
+      commandId: row.command_id,
+      deviceId: row.device_id,
+      type: row.type,
+      payload: row.payload || {},
+      status: row.status,
+      message: row.message,
+      lastDeliveredAt: row.last_delivered_at,
+      completedAt: row.completed_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private getCommandVolumeLevel(command: DeviceCommandRow) {
+    const value = command.payload?.volumeLevel;
+    return typeof value === 'number' && Number.isInteger(value) ? value : null;
   }
 
 }

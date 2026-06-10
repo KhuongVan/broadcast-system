@@ -6,6 +6,7 @@ import { DeviceClientAuthGuard } from './device-client-auth.guard';
 import { DeviceClientService } from './device-client.service';
 import {
   DeviceClientHeartbeatBody,
+  DeviceClientCommandResultBody,
   DeviceClientMicTestUploadBody,
   DeviceClientPlaybackStateBody,
   DeviceClientRegisterBody,
@@ -72,5 +73,11 @@ export class DeviceClientController {
   @UseGuards(DeviceClientAuthGuard)
   getCommands(@Req() request: DeviceClientRequest) {
     return this.deviceClient.getCommands(request.deviceClient!);
+  }
+
+  @Post('/command-result')
+  @UseGuards(DeviceClientAuthGuard)
+  updateCommandResult(@Req() request: DeviceClientRequest, @Body() body: DeviceClientCommandResultBody) {
+    return this.deviceClient.updateCommandResult(request.deviceClient!, body);
   }
 }

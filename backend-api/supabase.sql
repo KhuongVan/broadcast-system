@@ -150,6 +150,21 @@ alter table devices
 add column if not exists playback_updated_at timestamptz;
 
 alter table devices
+add column if not exists volume_level integer;
+
+alter table devices
+add column if not exists desired_volume_level integer;
+
+alter table devices
+add column if not exists volume_sync_status text;
+
+alter table devices
+add column if not exists volume_sync_message text;
+
+alter table devices
+add column if not exists volume_updated_at timestamptz;
+
+alter table devices
 add column if not exists deleted_at timestamptz;
 
 alter table devices
@@ -206,6 +221,51 @@ begin
   end if;
 end $$;
 
+alter table devices
+drop constraint if exists devices_volume_level_check;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'devices_volume_level_check'
+  ) then
+    alter table devices
+    add constraint devices_volume_level_check check (volume_level is null or (volume_level >= 0 and volume_level <= 15));
+  end if;
+end $$;
+
+alter table devices
+drop constraint if exists devices_desired_volume_level_check;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'devices_desired_volume_level_check'
+  ) then
+    alter table devices
+    add constraint devices_desired_volume_level_check check (desired_volume_level is null or (desired_volume_level >= 0 and desired_volume_level <= 15));
+  end if;
+end $$;
+
+alter table devices
+drop constraint if exists devices_volume_sync_status_check;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'devices_volume_sync_status_check'
+  ) then
+    alter table devices
+    add constraint devices_volume_sync_status_check check (volume_sync_status is null or volume_sync_status in ('PENDING', 'SYNCED', 'FAILED'));
+  end if;
+end $$;
+
 create index if not exists idx_devices_area
 on devices(area);
 
@@ -214,6 +274,25 @@ on devices(online);
 
 create index if not exists idx_devices_deleted_at
 on devices(deleted_at);
+
+create table if not exists device_commands (
+  command_id uuid primary key default gen_random_uuid(),
+  device_id uuid not null references devices(device_id) on delete cascade,
+  type text not null check (type in ('SET_VOLUME')),
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'PENDING' check (status in ('PENDING', 'DELIVERED', 'SUCCEEDED', 'FAILED', 'SUPERSEDED')),
+  message text,
+  last_delivered_at timestamptz,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_device_commands_pending
+on device_commands(device_id, status, created_at);
+
+create index if not exists idx_device_commands_device_type_status
+on device_commands(device_id, type, status);
 
 create table if not exists device_mic_test_uploads (
   upload_id uuid primary key default gen_random_uuid(),

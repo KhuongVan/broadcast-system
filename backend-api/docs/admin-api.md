@@ -572,7 +572,12 @@ Response:
       "syncMessage": null,
       "playbackMessage": null,
       "playbackPositionSeconds": null,
-      "playbackUpdatedAt": null
+      "playbackUpdatedAt": null,
+      "volumeLevel": null,
+      "desiredVolumeLevel": 7,
+      "volumeSyncStatus": "PENDING",
+      "volumeSyncMessage": "Dang cho thiet bi nhan lenh am luong.",
+      "volumeUpdatedAt": "2026-06-05T03:04:00.000Z"
     }
   ]
 }
@@ -635,6 +640,39 @@ Request:
 ```json
 {
   "playAllowed": true
+}
+```
+
+### Update volume
+
+Gui muc am luong mong muon xuong thiet bi. Backend luu `desiredVolumeLevel`, tao lenh `SET_VOLUME`, va doi Android ack qua `/api/device-client/command-result`.
+
+```http
+PUT /api/devices/:deviceId/volume
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "volumeLevel": 7
+}
+```
+
+Allowed `volumeLevel`: so nguyen tu `0` den `15`.
+
+Response:
+
+```json
+{
+  "device": {
+    "deviceId": "uuid",
+    "desiredVolumeLevel": 7,
+    "volumeLevel": null,
+    "volumeSyncStatus": "PENDING",
+    "volumeSyncMessage": "Dang cho thiet bi nhan lenh am luong."
+  }
 }
 ```
 

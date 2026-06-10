@@ -420,6 +420,7 @@ device_mic_test_uploads (upload_id, device_id, file_name, storage_path, duration
 | `PUT`  | `/api/devices/:id` | Cập nhật thiết bị |
 | `DELETE` | `/api/devices/:id` | Xóa thiết bị (soft delete) |
 | `PUT`  | `/api/devices/:id/play-allowed` | Bật/tắt phép phát |
+| `PUT`  | `/api/devices/:id/volume` | Điều chỉnh âm lượng mong muốn 0-15 |
 | `POST` | `/api/devices/:id/play-now` | Phát ngay (RTSP schedule) |
 | `POST` | `/api/devices/:id/stop` | Dừng phát |
 | `POST` | `/api/devices/:id/sync-schedule` | Đồng bộ lịch xuống thiết bị |
@@ -483,7 +484,8 @@ API dành riêng cho Android App (thiết bị loa). Xác thực bằng `Authori
 | `POST` | `/api/device-client/playback-state` | Báo cáo trạng thái phát |
 | `POST` | `/api/device-client/sync-result` | Báo kết quả đồng bộ lịch |
 | `POST` | `/api/device-client/mic-test-upload` | Upload file kiểm tra mic |
-| `GET`  | `/api/device-client/commands` | Poll lệnh từ server |
+| `GET`  | `/api/device-client/commands` | Poll lệnh từ server (`NOOP`, `SET_VOLUME`) |
+| `POST` | `/api/device-client/command-result` | Báo kết quả thực thi lệnh |
 
 ### Register Request
 ```json

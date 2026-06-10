@@ -5,6 +5,7 @@ import { config } from '../config';
 import { DeviceConnectionType, DevicePlayStatus, DeviceRecord, DeviceSyncStatus } from '../devices/device.types';
 import { StorageService } from '../storage/storage.service';
 import {
+  DeviceClientCommandResultBody,
   DeviceClientHeartbeatBody,
   DeviceClientMicTestUploadBody,
   DeviceClientPlaybackStateBody,
@@ -188,7 +189,20 @@ export class DeviceClientService {
     };
   }
 
-  getCommands(device: DeviceRecord) {
+  async getCommands(device: DeviceRecord) {
+    const command = await this.storage.getPendingDeviceCommand(device.deviceId);
+    if (command) {
+      return {
+        serverTime: this.serverTime(),
+        deviceId: device.deviceId,
+        command: {
+          commandId: command.commandId,
+          type: command.type,
+          payload: command.payload,
+        },
+      };
+    }
+
     return {
       serverTime: this.serverTime(),
       deviceId: device.deviceId,
@@ -196,6 +210,27 @@ export class DeviceClientService {
         commandId: 'noop',
         type: 'NOOP',
       },
+    };
+  }
+
+  async updateCommandResult(device: DeviceRecord, body: DeviceClientCommandResultBody) {
+    const commandId = this.optionalText(body.commandId);
+    if (!commandId) throw new BadRequestException('Vui long gui commandId.');
+    const status = this.normalizeCommandResultStatus(body.status);
+    const appliedVolumeLevel = body.appliedVolumeLevel === undefined ? null : this.normalizeVolumeLevel(body.appliedVolumeLevel);
+    if (status === 'SUCCEEDED' && appliedVolumeLevel === null) {
+      throw new BadRequestException('Vui long gui appliedVolumeLevel khi lenh thanh cong.');
+    }
+
+    const updated = await this.storage.updateDeviceCommandResult(device.deviceId, commandId, {
+      status,
+      appliedVolumeLevel,
+      message: this.optionalText(body.message),
+    });
+
+    return {
+      device: this.toClientDevice(updated),
+      serverTime: this.serverTime(),
     };
   }
 
@@ -220,6 +255,19 @@ export class DeviceClientService {
   private normalizeSyncStatus(status: string | undefined): DeviceSyncStatus {
     if (status === 'SYNCED' || status === 'FAILED') return status;
     throw new BadRequestException('syncStatus chi ho tro SYNCED hoac FAILED.');
+  }
+
+  private normalizeCommandResultStatus(status: string | undefined) {
+    if (status === 'SUCCEEDED' || status === 'FAILED') return status;
+    throw new BadRequestException('status chi ho tro SUCCEEDED hoac FAILED.');
+  }
+
+  private normalizeVolumeLevel(value: unknown) {
+    const volumeLevel = Number(value);
+    if (!Number.isInteger(volumeLevel) || volumeLevel < 0 || volumeLevel > 15) {
+      throw new BadRequestException('Am luong phai la so nguyen tu 0 den 15.');
+    }
+    return volumeLevel;
   }
 
   private normalizeBatteryLevel(value: number) {
@@ -325,6 +373,11 @@ export class DeviceClientService {
       playbackMessage: device.playbackMessage,
       playbackPositionSeconds: device.playbackPositionSeconds,
       playbackUpdatedAt: device.playbackUpdatedAt,
+      volumeLevel: device.volumeLevel,
+      desiredVolumeLevel: device.desiredVolumeLevel,
+      volumeSyncStatus: device.volumeSyncStatus,
+      volumeSyncMessage: device.volumeSyncMessage,
+      volumeUpdatedAt: device.volumeUpdatedAt,
       updatedAt: device.updatedAt,
     };
   }

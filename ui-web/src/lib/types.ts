@@ -104,6 +104,11 @@ export type Device = {
   playbackMessage: string | null;
   playbackPositionSeconds: number | null;
   playbackUpdatedAt: string | null;
+  volumeLevel: number | null;
+  desiredVolumeLevel: number | null;
+  volumeSyncStatus: 'PENDING' | 'SYNCED' | 'FAILED' | null;
+  volumeSyncMessage: string | null;
+  volumeUpdatedAt: string | null;
   latitude: number | null;
   longitude: number | null;
   createdAt: string;

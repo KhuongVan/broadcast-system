@@ -38,6 +38,11 @@ export class DevicesController {
     return { device: await this.devices.updatePlayAllowed(deviceId, Boolean(body.playAllowed)) };
   }
 
+  @Put('/api/devices/:deviceId/volume')
+  async updateVolume(@Param('deviceId') deviceId: string, @Body() body: { volumeLevel?: number }) {
+    return { device: await this.devices.updateVolume(deviceId, body.volumeLevel) };
+  }
+
   @Post('/api/devices/:deviceId/play-now')
   async playNow(@Param('deviceId') deviceId: string, @Body() body: { scheduleId?: string }) {
     return { device: await this.devices.playNow(deviceId, body.scheduleId || '') };

@@ -184,6 +184,19 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     await adminApi.stopDevice(deviceId);
   }
 
+  async function updateDeviceVolume(deviceId: string, volumeLevel: number) {
+    setSaving(true);
+    setError('');
+    try {
+      const { device } = await adminApi.updateDeviceVolume(deviceId, volumeLevel);
+      setDevices((current) => current.map((item) => (item.deviceId === device.deviceId ? device : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không cập nhật được âm lượng thiết bị.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function exportDevicesCsv() {
     const rows = [
       ['Tên thiết bị', 'MAC', 'Số SIM', 'Khu vực', 'Dạng kết nối', 'Trạng thái online', 'Trạng thái phát', 'Lịch đã tải', 'Đồng bộ'],
@@ -307,6 +320,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                           </th>
                           <th>Thông tin thiết bị</th>
                           <th>Trạng thái phát</th>
+                          <th>Âm lượng</th>
                           <th>Kết nối</th>
                           <th>Lịch đã tải</th>
                         </tr>
@@ -322,6 +336,9 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                               <StatusBadge tone={getPlayStatusTone(device)}>{getPlayStatusLabel(device)}</StatusBadge>
                               {!device.playAllowed ? <div className="subtext">Đang chặn phát theo lịch</div> : null}
                               {device.playbackMessage ? <div className="subtext">{device.playbackMessage}</div> : null}
+                            </td>
+                            <td>
+                              <VolumeControl device={device} disabled={saving} onChange={(volumeLevel) => void updateDeviceVolume(device.deviceId, volumeLevel)} />
                             </td>
                             <td>
                               <StatusBadge tone={device.online ? 'ok' : 'danger'}>{device.online ? 'Kết nối' : 'Mất kết nối'}</StatusBadge>
@@ -653,6 +670,46 @@ function getConnectionTypeLabel(connectionType: Device['connectionType']) {
   if (connectionType === 'LAN') return 'LAN';
   if (connectionType === '4G') return '4G';
   return 'Chưa xác định';
+}
+
+const volumeLevels = Array.from({ length: 16 }, (_, index) => index);
+
+function VolumeControl({ device, disabled, onChange }: { device: Device; disabled: boolean; onChange: (volumeLevel: number) => void }) {
+  const displayVolume = device.desiredVolumeLevel ?? device.volumeLevel ?? 0;
+  const actualText = device.volumeLevel !== null ? `Thực tế: ${device.volumeLevel}` : 'Chưa có xác nhận';
+
+  return (
+    <div className="volume-control">
+      <select
+        aria-label={`Âm lượng ${device.name}`}
+        disabled={disabled}
+        value={displayVolume}
+        onChange={(event) => onChange(Number(event.target.value))}
+      >
+        {volumeLevels.map((level) => (
+          <option key={level} value={level}>
+            {level}
+          </option>
+        ))}
+      </select>
+      <StatusBadge tone={getVolumeSyncTone(device.volumeSyncStatus)}>{getVolumeSyncLabel(device.volumeSyncStatus)}</StatusBadge>
+      <div className="subtext">{device.volumeSyncMessage || actualText}</div>
+    </div>
+  );
+}
+
+function getVolumeSyncLabel(status: Device['volumeSyncStatus']) {
+  if (status === 'SYNCED') return 'Đã áp dụng';
+  if (status === 'FAILED') return 'Thất bại';
+  if (status === 'PENDING') return 'Đang chờ';
+  return 'Chưa đặt';
+}
+
+function getVolumeSyncTone(status: Device['volumeSyncStatus']) {
+  if (status === 'SYNCED') return 'ok';
+  if (status === 'FAILED') return 'danger';
+  if (status === 'PENDING') return 'warn';
+  return 'neutral';
 }
 
 function DeviceInfoCell({ device }: { device: Device }) {

@@ -3,6 +3,7 @@ import { BroadcastScheduleRecord } from '../schedules/schedule.types';
 export type DeviceConnectionType = 'LAN' | '4G' | 'UNKNOWN';
 export type DeviceSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
 export type DevicePlayStatus = 'IDLE' | 'PLAYING' | 'STOPPED' | 'ERROR';
+export type DeviceVolumeSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
 
 export type DeviceRecord = {
   deviceId: string;
@@ -27,6 +28,11 @@ export type DeviceRecord = {
   playbackMessage: string | null;
   playbackPositionSeconds: number | null;
   playbackUpdatedAt: string | null;
+  volumeLevel: number | null;
+  desiredVolumeLevel: number | null;
+  volumeSyncStatus: DeviceVolumeSyncStatus | null;
+  volumeSyncMessage: string | null;
+  volumeUpdatedAt: string | null;
   latitude: number | null;
   longitude: number | null;
   createdAt: string;
