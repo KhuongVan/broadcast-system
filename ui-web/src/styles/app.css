@@ -1146,6 +1146,27 @@ audio {
   gap: 12px;
 }
 
+.device-import-form {
+  display: grid;
+  gap: 20px;
+}
+
+.device-import-form label {
+  color: #26364f;
+  display: grid;
+  font-size: 18px;
+  font-weight: 800;
+  gap: 12px;
+}
+
+.device-import-form input[type='file'] {
+  border: 1px solid #d5dee9;
+  border-radius: 6px;
+  color: #2d3544;
+  padding: 8px;
+  width: 100%;
+}
+
 .select-col {
   text-align: center;
   width: 44px;

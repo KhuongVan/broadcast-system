@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { adminApi } from '../lib/api';
 import { formatDateTime, formatStatus } from '../lib/format';
@@ -38,7 +38,8 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   const operationSchedules = useMemo(() => schedules, [schedules]);
 
@@ -204,18 +205,26 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     downloadCsv('devices.csv', rows);
   }
 
-  async function importDevices(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  function closeImportModal() {
+    setImportModalOpen(false);
+    setImportFile(null);
+  }
+
+  async function importDevices(event: FormEvent) {
+    event.preventDefault();
+    if (!importFile) {
+      setError('Vui lòng chọn file thiết bị.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      const rows = await readDeviceImportRows(file);
+      const rows = await readDeviceImportRows(importFile);
       const inputs = rows.map(toDeviceInputFromCsv).filter((input): input is DeviceInput => Boolean(input));
       if (!inputs.length) throw new Error('File nhập không có thiết bị hợp lệ.');
       await Promise.all(inputs.map((input) => adminApi.createDevice(input)));
       await load();
+      closeImportModal();
       alert(`Đã nhập ${inputs.length} thiết bị.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không nhập được thiết bị.');
@@ -345,13 +354,12 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                   <button className="primary" onClick={openCreateModal} type="button">
                     Thêm mới
                   </button>
-                  <button className="primary" disabled={saving} onClick={() => importInputRef.current?.click()} type="button">
+                  <button className="primary" disabled={saving} onClick={() => setImportModalOpen(true)} type="button">
                     Nhập thiết bị
                   </button>
                   <button className="primary" disabled={!devices.length} onClick={exportDevicesCsv} type="button">
                     Xuất thiết bị
                   </button>
-                  <input accept=".csv,.xlsx,.xls" hidden ref={importInputRef} onChange={(event) => void importDevices(event)} type="file" />
                 </div>
               </div>
               <div>
@@ -422,6 +430,24 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                       </button>
                       <button className="ghost" onClick={closeModal} type="button">
                         Hủy
+                      </button>
+                    </div>
+                  </form>
+                </Modal>
+              ) : null}
+              {importModalOpen ? (
+                <Modal title="NHẬP FILE DEVICE" onClose={closeImportModal}>
+                  <form className="device-import-form" onSubmit={importDevices}>
+                    <label>
+                      Chọn file
+                      <input accept=".csv,.xlsx,.xls" onChange={(event: ChangeEvent<HTMLInputElement>) => setImportFile(event.target.files?.[0] || null)} type="file" />
+                    </label>
+                    <div className="modal-footer">
+                      <button className="primary" disabled={saving || !importFile} type="submit">
+                        OK
+                      </button>
+                      <button className="danger" disabled={saving} onClick={closeImportModal} type="button">
+                        Hủy bỏ
                       </button>
                     </div>
                   </form>
