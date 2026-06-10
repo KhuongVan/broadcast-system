@@ -58,8 +58,8 @@ const menu: MenuEntry[] = [
       { key: 'schedules:files', label: 'Kho âm thanh', icon: '♪', eyebrow: 'Quản lý lịch phát / Kho âm thanh' },
     ],
   },
-  { key: 'live', label: 'Phát trực tiếp', icon: '●', eyebrow: 'Live mic và phát file' },
   { key: 'emergency', label: 'Phát khẩn cấp', icon: '⚠', eyebrow: 'Phát khẩn cấp từ nguồn RTSP/HLS' },
+  { key: 'live', label: 'Phát trực tiếp', icon: '●', eyebrow: 'Live mic và phát file' },
   { key: 'reports', label: 'Báo cáo thống kê', icon: '▥', eyebrow: 'Số liệu tổng hợp' },
 ];
 

@@ -390,7 +390,7 @@ export function EmergencyView() {
                       <th>Thiết bị</th>
                       <th>Thời lượng</th>
                       <th>Bắt đầu</th>
-                      <th>Kết thúc DK</th>
+                      <th>Kết thúc dự kiến</th>
                       <th>Trạng thái</th>
                       <th></th>
                     </tr>

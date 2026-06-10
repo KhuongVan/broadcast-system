@@ -110,6 +110,12 @@ export function BroadcastView() {
   async function loadMicrophones() {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     try {
+      // Xin quyền mic trước — trình duyệt chỉ trả tên thật sau khi có quyền
+      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+      if (tempStream) {
+        tempStream.getTracks().forEach((track) => track.stop()); // dừng ngay, chỉ cần để mở khoá tên
+      }
+
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices
         .filter((device) => device.kind === 'audioinput')
