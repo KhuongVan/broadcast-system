@@ -211,11 +211,19 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       return;
     }
 
-    const device = await this.storage.getDevice(deviceId);
+    // Thử tìm theo UUID trước, sau đó fallback sang MAC address / Android ID
+    let device = await this.storage.getDevice(deviceId);
+    if (!device) {
+      device = await this.storage.findDeviceForClientRegistration({
+        macAddress: deviceId,
+        androidId: deviceId,
+      });
+    }
+
     if (!device) {
       client.emit('client_registration_status', {
         status: 'ERROR',
-        message: 'Không tìm thấy thiết bị mô phỏng.',
+        message: 'Không tìm thấy thiết bị. Kiểm tra lại UUID hoặc MAC address.',
         deviceId,
       });
       return;
