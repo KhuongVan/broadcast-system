@@ -1,10 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BroadcastGateway } from '../broadcast/broadcast.gateway';
 import { StorageService } from '../storage/storage.service';
 import { EmergencyBroadcastStartInput } from './emergency-broadcast.types';
 
 @Injectable()
 export class EmergencyBroadcastsService {
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly gateway: BroadcastGateway,
+  ) {}
 
   listSessions() {
     return this.storage.listEmergencyBroadcastSessions();
@@ -45,8 +49,15 @@ export class EmergencyBroadcastsService {
       startedBy: input.startedBy || 'Admin',
     });
 
-    // Write PLAY_EMERGENCY command for each device
+    // Write PLAY_EMERGENCY command for each device (for Android polling)
     await this.storage.createEmergencyCommandsForDevices(deviceIds, 'PLAY_EMERGENCY', {
+      url: source.url,
+      durationMinutes,
+      sessionId: session.sessionId,
+    });
+
+    // Emit real-time socket event cho browser /client simulator
+    this.gateway.emitEmergencyToDevices(deviceIds, {
       url: source.url,
       durationMinutes,
       sessionId: session.sessionId,
@@ -65,10 +76,13 @@ export class EmergencyBroadcastsService {
     const updated = await this.storage.finishEmergencyBroadcastSession(sessionId, 'CANCELLED');
     if (!updated) throw new NotFoundException('Không tìm thấy phiên phát khẩn cấp.');
 
-    // Write STOP_EMERGENCY command for each device
+    // Write STOP_EMERGENCY command for each device (for Android polling)
     await this.storage.createEmergencyCommandsForDevices(session.targetDeviceIds, 'STOP_EMERGENCY', {
       sessionId,
     });
+
+    // Emit real-time socket event cho browser /client simulator
+    this.gateway.stopEmergencyOnDevices(session.targetDeviceIds);
 
     return updated;
   }

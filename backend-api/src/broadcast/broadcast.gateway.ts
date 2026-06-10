@@ -649,4 +649,18 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private normalizeRoomPart(value: string) {
     return String(value || '').trim().toLowerCase();
   }
+
+  /** Gửi lệnh phát khẩn cấp đến các browser client đang mô phỏng thiết bị */
+  emitEmergencyToDevices(deviceIds: string[], payload: { url: string; durationMinutes: number; sessionId: string }) {
+    for (const deviceId of deviceIds) {
+      this.server.to(this.deviceRoom(deviceId)).emit('PLAY_EMERGENCY', payload);
+    }
+  }
+
+  /** Gửi lệnh dừng khẩn cấp đến các browser client đang mô phỏng thiết bị */
+  stopEmergencyOnDevices(deviceIds: string[]) {
+    for (const deviceId of deviceIds) {
+      this.server.to(this.deviceRoom(deviceId)).emit('STOP_EMERGENCY');
+    }
+  }
 }

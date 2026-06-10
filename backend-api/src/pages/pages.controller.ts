@@ -2062,6 +2062,73 @@ export class PagesController {
       if (data.action === 'STOP') stopPlayback();
     });
 
+    // ── Phát khẩn cấp ──────────────────────────────────────────────────────
+    let emergencyHls = null;
+    let emergencyTimer = null;
+
+    function startEmergencyPlayer(url, durationMinutes, sessionId) {
+      stopEmergencyPlayer();
+      setStatus('🚨 PHÁT KHẨN CẤP...');
+      setCurrentFileName('Khẩn cấp: ' + url);
+
+      if (url.endsWith('.m3u8') || url.includes('.m3u8?')) {
+        // HLS stream
+        if (Hls.isSupported()) {
+          emergencyHls = new Hls({ lowLatencyMode: true, backBufferLength: 0 });
+          emergencyHls.loadSource(url);
+          emergencyHls.attachMedia(audio);
+          emergencyHls.on(Hls.Events.MANIFEST_PARSED, () => {
+            audio.play().catch(() => { btn.style.display = 'inline-block'; });
+          });
+          emergencyHls.on(Hls.Events.ERROR, (_, data) => {
+            if (data.fatal) stopEmergencyPlayer();
+          });
+        } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
+          audio.src = url;
+          audio.play().catch(() => null);
+        }
+      } else {
+        // HTTP direct audio stream
+        audio.src = url;
+        audio.play().catch(() => { btn.style.display = 'inline-block'; });
+      }
+
+      // Auto-stop sau khi hết thời lượng
+      if (durationMinutes > 0) {
+        emergencyTimer = setTimeout(() => {
+          stopEmergencyPlayer();
+          if (sessionId) {
+            fetch('/api/device-client/emergency-finished', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Device-Token': window._deviceToken || '' },
+              body: JSON.stringify({ sessionId }),
+            }).catch(() => null);
+          }
+        }, durationMinutes * 60 * 1000);
+      }
+    }
+
+    function stopEmergencyPlayer() {
+      if (emergencyTimer) clearTimeout(emergencyTimer);
+      emergencyTimer = null;
+      if (emergencyHls) { emergencyHls.destroy(); emergencyHls = null; }
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      setStatus('CHỜ PHÁT THANH...');
+      setCurrentFileName('');
+    }
+
+    socket.on('PLAY_EMERGENCY', (data) => {
+      // data: { url, durationMinutes, sessionId }
+      startEmergencyPlayer(data.url || '', data.durationMinutes || 0, data.sessionId || '');
+    });
+
+    socket.on('STOP_EMERGENCY', () => {
+      stopEmergencyPlayer();
+    });
+    // ───────────────────────────────────────────────────────────────────────
+
     window.addEventListener('load', () => {
       loadStoredPositions();
       setStatus('CHỜ PHÁT THANH...');
