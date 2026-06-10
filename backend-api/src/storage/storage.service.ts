@@ -13,6 +13,8 @@ import {
   DeviceSyncStatus,
   DeviceVolumeSyncStatus,
 } from '../devices/device.types';
+import { EmergencyBroadcastRecord, EmergencyBroadcastStatus, EmergencyBroadcastStartInput } from '../emergency-broadcasts/emergency-broadcast.types';
+import { EmergencySourceInput, EmergencySourceRecord } from '../emergency-sources/emergency-source.types';
 import { LiveBroadcastCreateInput, LiveBroadcastRecord, LiveBroadcastStatus } from '../live-broadcasts/live-broadcast.types';
 import { PlaylistItemRecord, PlaylistRecord } from '../playlists/playlist.types';
 import { BroadcastScheduleRecord, ScheduleInput, ScheduleRunLogRecord } from '../schedules/schedule.types';
@@ -103,7 +105,7 @@ type DeviceRow = {
 };
 
 type DeviceCommandStatus = 'PENDING' | 'DELIVERED' | 'SUCCEEDED' | 'FAILED' | 'SUPERSEDED';
-type DeviceCommandType = 'SET_VOLUME' | 'START_RECORDING' | 'STOP_RECORDING';
+type DeviceCommandType = 'SET_VOLUME' | 'START_RECORDING' | 'STOP_RECORDING' | 'PLAY_EMERGENCY' | 'STOP_EMERGENCY';
 type DeviceRecordingStatus = 'REQUESTED' | 'RECORDING' | 'STOP_REQUESTED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
 
 type DeviceCommandRow = {
@@ -182,6 +184,32 @@ type LiveBroadcastSessionRow = {
   status: LiveBroadcastStatus;
   started_by: string | null;
   message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type EmergencySourceRow = {
+  source_id: string;
+  name: string;
+  url: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type EmergencyBroadcastSessionRow = {
+  session_id: string;
+  source_id: string | null;
+  source_name: string;
+  source_url: string;
+  target_device_ids: string[] | null;
+  target_label: string;
+  duration_minutes: number;
+  started_by: string | null;
+  started_at: string;
+  scheduled_end_at: string;
+  ended_at: string | null;
+  status: EmergencyBroadcastStatus;
   created_at: string;
   updated_at: string;
 };
@@ -1719,6 +1747,204 @@ export class StorageService {
   private getCommandVolumeLevel(command: DeviceCommandRow) {
     const value = command.payload?.volumeLevel;
     return typeof value === 'number' && Number.isInteger(value) ? value : null;
+  }
+
+  // ─── Emergency Sources ───────────────────────────────────────────────────────
+
+  async listEmergencySources(): Promise<EmergencySourceRecord[]> {
+    const { data, error } = await this.supabase
+      .from('emergency_sources')
+      .select('*')
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(`Khong doc duoc emergency_sources: ${error.message}`);
+    return ((data || []) as EmergencySourceRow[]).map((row) => this.toEmergencySourceRecord(row));
+  }
+
+  async getEmergencySource(sourceId: string): Promise<EmergencySourceRecord | null> {
+    const { data, error } = await this.supabase
+      .from('emergency_sources')
+      .select('*')
+      .eq('source_id', sourceId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong doc duoc emergency source: ${error.message}`);
+    return data ? this.toEmergencySourceRecord(data as EmergencySourceRow) : null;
+  }
+
+  async createEmergencySource(input: Required<EmergencySourceInput>): Promise<EmergencySourceRecord> {
+    const { data, error } = await this.supabase
+      .from('emergency_sources')
+      .insert({ name: input.name, url: input.url, sort_order: input.sortOrder })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(`Khong tao duoc emergency source: ${error.message}`);
+    return this.toEmergencySourceRecord(data as EmergencySourceRow);
+  }
+
+  async updateEmergencySource(sourceId: string, input: Required<EmergencySourceInput>): Promise<EmergencySourceRecord | null> {
+    const { data, error } = await this.supabase
+      .from('emergency_sources')
+      .update({ name: input.name, url: input.url, sort_order: input.sortOrder, updated_at: new Date().toISOString() })
+      .eq('source_id', sourceId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong cap nhat duoc emergency source: ${error.message}`);
+    return data ? this.toEmergencySourceRecord(data as EmergencySourceRow) : null;
+  }
+
+  async deleteEmergencySource(sourceId: string): Promise<void> {
+    const { error } = await this.supabase.from('emergency_sources').delete().eq('source_id', sourceId);
+    if (error) throw new Error(`Khong xoa duoc emergency source: ${error.message}`);
+  }
+
+  private toEmergencySourceRecord(row: EmergencySourceRow): EmergencySourceRecord {
+    return {
+      sourceId: row.source_id,
+      name: row.name,
+      url: row.url,
+      sortOrder: row.sort_order,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  // ─── Emergency Broadcast Sessions ────────────────────────────────────────────
+
+  async listEmergencyBroadcastSessions(): Promise<EmergencyBroadcastRecord[]> {
+    const { data, error } = await this.supabase
+      .from('emergency_broadcast_sessions')
+      .select('*')
+      .order('started_at', { ascending: false })
+      .limit(100);
+
+    if (error) throw new Error(`Khong doc duoc emergency_broadcast_sessions: ${error.message}`);
+    return ((data || []) as EmergencyBroadcastSessionRow[]).map((row) => this.toEmergencyBroadcastRecord(row));
+  }
+
+  async getEmergencyBroadcastSession(sessionId: string): Promise<EmergencyBroadcastRecord | null> {
+    const { data, error } = await this.supabase
+      .from('emergency_broadcast_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong doc duoc emergency session: ${error.message}`);
+    return data ? this.toEmergencyBroadcastRecord(data as EmergencyBroadcastSessionRow) : null;
+  }
+
+  async getActiveEmergencySessionsByDeviceIds(deviceIds: string[]): Promise<EmergencyBroadcastRecord[]> {
+    const { data, error } = await this.supabase
+      .from('emergency_broadcast_sessions')
+      .select('*')
+      .eq('status', 'ACTIVE');
+
+    if (error) throw new Error(`Khong kiem tra duoc conflict: ${error.message}`);
+    const rows = ((data || []) as EmergencyBroadcastSessionRow[]);
+    return rows
+      .map((row) => this.toEmergencyBroadcastRecord(row))
+      .filter((session) => session.targetDeviceIds.some((id) => deviceIds.includes(id)));
+  }
+
+  async createEmergencyBroadcastSession(
+    input: Omit<EmergencyBroadcastStartInput, 'deviceIds'> & {
+      sourceId: string;
+      sourceName: string;
+      sourceUrl: string;
+      targetDeviceIds: string[];
+      targetLabel: string;
+    },
+  ): Promise<EmergencyBroadcastRecord> {
+    const startedAt = new Date();
+    const scheduledEndAt = new Date(startedAt.getTime() + input.durationMinutes * 60 * 1000);
+
+    const { data, error } = await this.supabase
+      .from('emergency_broadcast_sessions')
+      .insert({
+        source_id: input.sourceId,
+        source_name: input.sourceName,
+        source_url: input.sourceUrl,
+        target_device_ids: input.targetDeviceIds,
+        target_label: input.targetLabel,
+        duration_minutes: input.durationMinutes,
+        started_by: input.startedBy || null,
+        started_at: startedAt.toISOString(),
+        scheduled_end_at: scheduledEndAt.toISOString(),
+        status: 'ACTIVE',
+      })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(`Khong tao duoc emergency session: ${error.message}`);
+    return this.toEmergencyBroadcastRecord(data as EmergencyBroadcastSessionRow);
+  }
+
+  async finishEmergencyBroadcastSession(
+    sessionId: string,
+    status: 'FINISHED' | 'CANCELLED',
+  ): Promise<EmergencyBroadcastRecord | null> {
+    const { data, error } = await this.supabase
+      .from('emergency_broadcast_sessions')
+      .update({ status, ended_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('session_id', sessionId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong cap nhat duoc emergency session: ${error.message}`);
+    return data ? this.toEmergencyBroadcastRecord(data as EmergencyBroadcastSessionRow) : null;
+  }
+
+  async createEmergencyCommandsForDevices(
+    deviceIds: string[],
+    type: 'PLAY_EMERGENCY' | 'STOP_EMERGENCY',
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (!deviceIds.length) return;
+    const now = new Date().toISOString();
+    const rows = deviceIds.map((deviceId) => ({
+      device_id: deviceId,
+      type,
+      payload,
+      status: 'PENDING',
+      updated_at: now,
+    }));
+
+    const { error } = await this.supabase.from('device_commands').insert(rows);
+    if (error) throw new Error(`Khong tao duoc emergency commands: ${error.message}`);
+  }
+
+  async getDeviceNamesByIds(deviceIds: string[]): Promise<string> {
+    if (!deviceIds.length) return '';
+    const { data, error } = await this.supabase
+      .from('devices')
+      .select('name')
+      .in('device_id', deviceIds)
+      .is('deleted_at', null);
+
+    if (error) throw new Error(`Khong doc duoc ten thiet bi: ${error.message}`);
+    return ((data || []) as { name: string }[]).map((d) => d.name).join(', ');
+  }
+
+  private toEmergencyBroadcastRecord(row: EmergencyBroadcastSessionRow): EmergencyBroadcastRecord {
+    return {
+      sessionId: row.session_id,
+      sourceId: row.source_id,
+      sourceName: row.source_name,
+      sourceUrl: row.source_url,
+      targetDeviceIds: Array.isArray(row.target_device_ids) ? row.target_device_ids : [],
+      targetLabel: row.target_label,
+      durationMinutes: row.duration_minutes,
+      startedBy: row.started_by,
+      startedAt: row.started_at,
+      scheduledEndAt: row.scheduled_end_at,
+      endedAt: row.ended_at,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
   }
 
 }

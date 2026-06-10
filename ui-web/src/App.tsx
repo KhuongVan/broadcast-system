@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BroadcastView } from './components/BroadcastView';
 import { DevicesView } from './components/DevicesView';
+import { EmergencyView } from './components/EmergencyView';
 import { FilesView } from './components/FilesView';
 import { LoginPage } from './components/LoginPage';
 import { OverviewView } from './components/OverviewView';
@@ -56,6 +57,7 @@ export function App() {
         />
       ) : null}
       {activeView === 'live' ? <BroadcastView /> : null}
+      {activeView === 'emergency' ? <EmergencyView /> : null}
       {activeView === 'reports' ? <ReportsView /> : null}
     </Shell>
   );

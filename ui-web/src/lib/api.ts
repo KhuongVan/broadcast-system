@@ -3,6 +3,10 @@ import type {
   Device,
   DeviceInput,
   DeviceRecordingSession,
+  EmergencyBroadcastSession,
+  EmergencyBroadcastStartInput,
+  EmergencySource,
+  EmergencySourceInput,
   LiveBroadcastCreateInput,
   LiveBroadcastSession,
   Playlist,
@@ -190,5 +194,32 @@ export const adminApi = {
     api<{ file: AudioFile; voice: string; speed: string; characters: number }>('/api/tts/generate', {
       method: 'POST',
       json: input,
+    }),
+  // Emergency Sources
+  listEmergencySources: () => api<{ sources: EmergencySource[] }>('/api/emergency-sources'),
+  createEmergencySource: (input: EmergencySourceInput) =>
+    api<{ source: EmergencySource }>('/api/emergency-sources', {
+      method: 'POST',
+      json: input,
+    }),
+  updateEmergencySource: (sourceId: string, input: EmergencySourceInput) =>
+    api<{ source: EmergencySource }>(`/api/emergency-sources/${sourceId}`, {
+      method: 'PUT',
+      json: input,
+    }),
+  deleteEmergencySource: (sourceId: string) =>
+    api<{ success: true }>(`/api/emergency-sources/${sourceId}`, {
+      method: 'DELETE',
+    }),
+  // Emergency Broadcasts
+  listEmergencyBroadcasts: () => api<{ sessions: EmergencyBroadcastSession[] }>('/api/emergency-broadcasts'),
+  startEmergencyBroadcast: (input: EmergencyBroadcastStartInput) =>
+    api<{ session: EmergencyBroadcastSession }>('/api/emergency-broadcasts/start', {
+      method: 'POST',
+      json: input,
+    }),
+  stopEmergencyBroadcast: (sessionId: string) =>
+    api<{ session: EmergencyBroadcastSession }>(`/api/emergency-broadcasts/${sessionId}/stop`, {
+      method: 'POST',
     }),
 };

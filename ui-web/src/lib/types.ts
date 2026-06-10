@@ -188,3 +188,44 @@ export type LiveBroadcastCreateInput = {
   micLabel: string | null;
   startedBy: string | null;
 };
+
+export type EmergencySource = {
+  sourceId: string;
+  name: string;
+  url: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmergencySourceInput = {
+  name: string;
+  url: string;
+  sortOrder?: number;
+};
+
+export type EmergencyBroadcastStatus = 'ACTIVE' | 'FINISHED' | 'CANCELLED';
+
+export type EmergencyBroadcastSession = {
+  sessionId: string;
+  sourceId: string | null;
+  sourceName: string;
+  sourceUrl: string;
+  targetDeviceIds: string[];
+  targetLabel: string;
+  durationMinutes: number;
+  startedBy: string | null;
+  startedAt: string;
+  scheduledEndAt: string;
+  endedAt: string | null;
+  status: EmergencyBroadcastStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmergencyBroadcastStartInput = {
+  sourceId: string;
+  deviceIds: string[];
+  durationMinutes: number;
+  startedBy?: string | null;
+};

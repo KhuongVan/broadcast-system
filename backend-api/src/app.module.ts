@@ -4,6 +4,8 @@ import { AudioFilesModule } from './audio-files/audio-files.module';
 import { BroadcastModule } from './broadcast/broadcast.module';
 import { DeviceClientModule } from './device-client/device-client.module';
 import { DevicesModule } from './devices/devices.module';
+import { EmergencyBroadcastsModule } from './emergency-broadcasts/emergency-broadcasts.module';
+import { EmergencySourcesModule } from './emergency-sources/emergency-sources.module';
 import { LiveBroadcastsModule } from './live-broadcasts/live-broadcasts.module';
 import { MediaModule } from './media/media.module';
 import { PagesController } from './pages/pages.controller';
@@ -25,6 +27,8 @@ import { TtsModule } from './tts/tts.module';
     MediaModule,
     BroadcastModule,
     TtsModule,
+    EmergencySourcesModule,
+    EmergencyBroadcastsModule,
   ],
   controllers: [PagesController],
 })

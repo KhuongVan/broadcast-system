@@ -11,6 +11,7 @@ export type ViewKey =
   | 'schedules:playlists'
   | 'schedules:files'
   | 'live'
+  | 'emergency'
   | 'reports';
 
 type ParentKey = 'devices' | 'schedules';
@@ -58,6 +59,7 @@ const menu: MenuEntry[] = [
     ],
   },
   { key: 'live', label: 'Phát trực tiếp', icon: '●', eyebrow: 'Live mic và phát file' },
+  { key: 'emergency', label: 'Phát khẩn cấp', icon: '⚠', eyebrow: 'Phát khẩn cấp từ nguồn RTSP/HLS' },
   { key: 'reports', label: 'Báo cáo thống kê', icon: '▥', eyebrow: 'Số liệu tổng hợp' },
 ];
 
