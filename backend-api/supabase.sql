@@ -102,7 +102,7 @@ create table if not exists devices (
   android_id text,
   device_token_hash text,
   area text not null,
-  connection_type text not null default '4G' check (connection_type in ('LAN', '4G')),
+  connection_type text not null default 'UNKNOWN' check (connection_type in ('LAN', '4G', 'UNKNOWN')),
   online boolean not null default false,
   last_seen_at timestamptz,
   play_allowed boolean not null default true,
@@ -157,6 +157,24 @@ add column if not exists latitude double precision;
 
 alter table devices
 add column if not exists longitude double precision;
+
+alter table devices
+alter column connection_type set default 'UNKNOWN';
+
+alter table devices
+drop constraint if exists devices_connection_type_check;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'devices_connection_type_check'
+  ) then
+    alter table devices
+    add constraint devices_connection_type_check check (connection_type in ('LAN', '4G', 'UNKNOWN'));
+  end if;
+end $$;
 
 alter table devices
 drop constraint if exists devices_mac_address_key;

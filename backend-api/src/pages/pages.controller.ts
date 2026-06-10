@@ -538,11 +538,6 @@ export class PagesController {
                 <input id="newDeviceSimInput" type="text">
                 <label>Khu vực:</label>
                 <input id="newDeviceAreaInput" type="text">
-                <label>Dạng kết nối:</label>
-                <select id="newDeviceConnectionInput">
-                  <option value="4G">4G</option>
-                  <option value="LAN">LAN</option>
-                </select>
                 <label>Vĩ độ:</label>
                 <input id="newDeviceLatInput" type="text">
                 <label>Kinh độ:</label>
@@ -804,6 +799,10 @@ export class PagesController {
       return value === 'PLAYING' ? 'ok' : value === 'STOPPED' ? 'warn' : 'neutral-badge';
     }
 
+    function getConnectionTypeLabel(value) {
+      return value === 'LAN' || value === '4G' ? value : 'Chưa xác định';
+    }
+
     function renderDevices() {
       const rows = document.getElementById('deviceRows');
       if (!rows) return;
@@ -916,14 +915,14 @@ export class PagesController {
       const searchInput = document.getElementById('deviceSearchInput');
       const keyword = searchInput ? searchInput.value.trim().toLowerCase() : '';
       const devices = keyword
-        ? state.devices.filter((device) => [device.name, device.macAddress, device.area, device.connectionType].some((value) => String(value || '').toLowerCase().includes(keyword)))
+        ? state.devices.filter((device) => [device.name, device.macAddress, device.simNumber, device.area, device.connectionType, device.networkType].some((value) => String(value || '').toLowerCase().includes(keyword)))
         : state.devices;
       rows.innerHTML = devices.length ? devices.map((device) => \`
         <tr>
           <td><strong>\${escapeHtml(device.name)}</strong></td>
           <td>\${escapeHtml(device.macAddress)}</td>
           <td>\${escapeHtml(device.area)}</td>
-          <td>\${escapeHtml(device.connectionType)}</td>
+          <td>\${escapeHtml(getConnectionTypeLabel(device.connectionType))}</td>
           <td>\${formatDate(device.updatedAt)}</td>
           <td class="actions">
             <button class="primary" onclick="editDeviceDemo('\${device.deviceId}')">Chỉnh sửa</button>
@@ -940,7 +939,6 @@ export class PagesController {
       document.getElementById('newDeviceNameInput').value = '';
       document.getElementById('newDeviceSimInput').value = '';
       document.getElementById('newDeviceAreaInput').value = '';
-      document.getElementById('newDeviceConnectionInput').value = '4G';
       document.getElementById('newDeviceLatInput').value = '';
       document.getElementById('newDeviceLngInput').value = '';
       document.getElementById('deviceCreateModalTitle').innerText = 'Tạo thiết bị mới';
@@ -954,9 +952,8 @@ export class PagesController {
       state.editingDeviceId = deviceId;
       document.getElementById('newDeviceMacInput').value = device.macAddress;
       document.getElementById('newDeviceNameInput').value = device.name;
-      document.getElementById('newDeviceSimInput').value = '1';
+      document.getElementById('newDeviceSimInput').value = device.simNumber || '';
       document.getElementById('newDeviceAreaInput').value = device.area;
-      document.getElementById('newDeviceConnectionInput').value = device.connectionType;
       document.getElementById('newDeviceLatInput').value = '';
       document.getElementById('newDeviceLngInput').value = '';
       document.getElementById('deviceCreateModalTitle').innerText = 'Chỉnh sửa thiết bị';
@@ -1066,9 +1063,8 @@ export class PagesController {
       const name = document.getElementById('newDeviceNameInput').value.trim();
       const sim = document.getElementById('newDeviceSimInput').value.trim();
       const area = document.getElementById('newDeviceAreaInput').value.trim();
-      const connectionType = document.getElementById('newDeviceConnectionInput').value;
       if (!mac || !name || !sim) return alert('Vui lòng nhập Địa chỉ MAC, Tên thiết bị và SIM.');
-      const body = JSON.stringify({ macAddress: mac, name, area, connectionType });
+      const body = JSON.stringify({ macAddress: mac, name, simNumber: sim, area });
       const isEditing = Boolean(state.editingDeviceId);
       try {
         await api(isEditing ? '/api/devices/' + state.editingDeviceId : '/api/devices', {
@@ -1098,7 +1094,7 @@ export class PagesController {
         device.name,
         device.macAddress,
         device.area,
-        device.connectionType,
+        getConnectionTypeLabel(device.connectionType),
         device.online ? 'Ket noi' : 'Mat ket noi',
         getDevicePlayLabel(device.playStatus),
         device.activeSchedule ? device.activeSchedule.name : '',
@@ -1195,7 +1191,7 @@ export class PagesController {
         'Thiết bị: ' + device.name,
         'MAC: ' + device.macAddress,
         'Khu vực: ' + device.area,
-        'Dạng kết nối: ' + device.connectionType,
+        'Dạng kết nối: ' + getConnectionTypeLabel(device.connectionType),
         'Kết nối: ' + (device.online ? 'Kết nối' : 'Mất kết nối'),
         'Lịch phát đã tải: ' + (schedule ? schedule.name : 'Chưa chọn lịch'),
         'Trạng thái phát: ' + getDevicePlayLabel(device.playStatus),

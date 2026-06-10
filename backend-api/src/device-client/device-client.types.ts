@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { DeviceRecord } from '../devices/device.types';
+import { DeviceConnectionType, DeviceRecord } from '../devices/device.types';
 
 export type DeviceClientRequest = Request & {
   deviceClient?: DeviceRecord;
@@ -9,13 +9,14 @@ export type DeviceClientRegisterBody = {
   androidId?: string;
   macAddress?: string;
   name?: string;
-  connectionType?: 'LAN' | '4G';
+  connectionType?: DeviceConnectionType;
   appVersion?: string;
 };
 
 export type DeviceClientHeartbeatBody = {
   status?: string;
   appVersion?: string;
+  connectionType?: DeviceConnectionType;
   networkType?: string;
   batteryLevel?: number;
 };

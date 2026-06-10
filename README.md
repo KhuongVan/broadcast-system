@@ -500,6 +500,7 @@ API dành riêng cho Android App (thiết bị loa). Xác thực bằng `Authori
 ```json
 {
   "appVersion": "1.2.0",
+  "connectionType": "4G",
   "networkType": "4G",
   "batteryLevel": 85
 }

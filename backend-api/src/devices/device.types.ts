@@ -1,6 +1,6 @@
 import { BroadcastScheduleRecord } from '../schedules/schedule.types';
 
-export type DeviceConnectionType = 'LAN' | '4G';
+export type DeviceConnectionType = 'LAN' | '4G' | 'UNKNOWN';
 export type DeviceSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
 export type DevicePlayStatus = 'IDLE' | 'PLAYING' | 'STOPPED' | 'ERROR';
 
@@ -38,7 +38,7 @@ export type DeviceInput = {
   macAddress: string;
   simNumber: string | null;
   area: string;
-  connectionType: DeviceConnectionType;
+  connectionType?: DeviceConnectionType;
   latitude: number | null;
   longitude: number | null;
 };

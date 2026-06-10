@@ -21,7 +21,6 @@ const emptyDevice: DeviceInput = {
   macAddress: '',
   simNumber: '',
   area: '',
-  connectionType: '4G',
   latitude: null,
   longitude: null,
 };
@@ -91,7 +90,6 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       macAddress: device.macAddress,
       simNumber: device.simNumber,
       area: device.area,
-      connectionType: device.connectionType,
       latitude: device.latitude,
       longitude: device.longitude,
     });
@@ -281,7 +279,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                             </td>
                             <td>
                               <StatusBadge tone={device.online ? 'ok' : 'danger'}>{device.online ? 'Kết nối' : 'Mất kết nối'}</StatusBadge>
-                              <div className="subtext">{device.connectionType} · {device.networkType || '-'}</div>
+                              <div className="subtext">{getConnectionTypeLabel(device.connectionType)} · {device.networkType || '-'}</div>
                               {device.batteryLevel !== null ? <div className="subtext">Pin {device.batteryLevel}%</div> : null}
                             </td>
                             <td>
@@ -324,7 +322,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                         <tr key={device.deviceId}>
                           <DeviceInfoCell device={device} />
                           <td>{device.area || '-'}</td>
-                          <td>{device.connectionType}</td>
+                          <td>{getConnectionTypeLabel(device.connectionType)}</td>
                           <td>{formatDateTime(device.updatedAt)}</td>
                           <td>
                             <div className="row-actions">
@@ -360,13 +358,6 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                     <label>
                       Khu vực
                       <input value={form.area} onChange={(event) => update('area', event.target.value)} placeholder="Chưa phân khu" />
-                    </label>
-                    <label>
-                      Kết nối
-                      <select value={form.connectionType} onChange={(event) => update('connectionType', event.target.value as DeviceInput['connectionType'])}>
-                        <option value="4G">4G</option>
-                        <option value="LAN">LAN</option>
-                      </select>
                     </label>
                     <label>
                       Vĩ độ (Latitude)
@@ -463,6 +454,12 @@ function getSyncStatusLabel(status: Device['syncStatus']) {
   if (status === 'FAILED') return 'Thất bại';
   if (status === 'PENDING') return 'Đang chờ';
   return '-';
+}
+
+function getConnectionTypeLabel(connectionType: Device['connectionType']) {
+  if (connectionType === 'LAN') return 'LAN';
+  if (connectionType === '4G') return '4G';
+  return 'Chưa xác định';
 }
 
 function DeviceInfoCell({ device }: { device: Device }) {

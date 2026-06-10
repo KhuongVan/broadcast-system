@@ -5,7 +5,7 @@ import { extname } from 'path';
 import WebSocket from 'ws';
 import { AudioFileRecord } from '../audio-files/audio-file.types';
 import { config } from '../config';
-import { DeviceInput, DevicePlayStatus, DeviceRecord, DeviceSyncStatus } from '../devices/device.types';
+import { DeviceConnectionType, DeviceInput, DevicePlayStatus, DeviceRecord, DeviceSyncStatus } from '../devices/device.types';
 import { LiveBroadcastCreateInput, LiveBroadcastRecord, LiveBroadcastStatus } from '../live-broadcasts/live-broadcast.types';
 import { PlaylistItemRecord, PlaylistRecord } from '../playlists/playlist.types';
 import { BroadcastScheduleRecord, ScheduleInput, ScheduleRunLogRecord } from '../schedules/schedule.types';
@@ -71,7 +71,7 @@ type DeviceRow = {
   android_id: string | null;
   device_token_hash: string | null;
   area: string;
-  connection_type: 'LAN' | '4G';
+  connection_type: DeviceConnectionType;
   online: boolean;
   last_seen_at: string | null;
   play_allowed: boolean;
@@ -648,7 +648,7 @@ export class StorageService {
         mac_address: input.macAddress,
         sim_number: input.simNumber,
         area: input.area,
-        connection_type: input.connectionType,
+        connection_type: input.connectionType || 'UNKNOWN',
         latitude: input.latitude,
         longitude: input.longitude,
         online: false,
@@ -674,7 +674,7 @@ export class StorageService {
     androidId: string | null;
     macAddress: string;
     name: string;
-    connectionType: 'LAN' | '4G';
+    connectionType: DeviceConnectionType;
     appVersion: string | null;
   }) {
     const now = new Date().toISOString();
@@ -722,7 +722,7 @@ export class StorageService {
 
   async updateDeviceClientRegistration(
     deviceId: string,
-    input: { androidId?: string | null; appVersion?: string | null },
+    input: { androidId?: string | null; appVersion?: string | null; connectionType?: DeviceConnectionType },
   ) {
     const now = new Date().toISOString();
     const update: Record<string, unknown> = {
@@ -733,6 +733,7 @@ export class StorageService {
 
     if (input.androidId) update.android_id = input.androidId;
     if (input.appVersion !== undefined) update.app_version = input.appVersion;
+    if (input.connectionType !== undefined) update.connection_type = input.connectionType;
 
     const { data, error } = await this.supabase
       .from('devices')
@@ -767,7 +768,6 @@ export class StorageService {
         mac_address: input.macAddress,
         sim_number: input.simNumber,
         area: input.area,
-        connection_type: input.connectionType,
         latitude: input.latitude,
         longitude: input.longitude,
         updated_at: new Date().toISOString(),
@@ -866,6 +866,7 @@ export class StorageService {
     deviceId: string,
     input: {
       appVersion?: string | null;
+      connectionType?: DeviceConnectionType;
       networkType?: string | null;
       batteryLevel?: number | null;
     },
@@ -878,6 +879,7 @@ export class StorageService {
     };
 
     if (input.appVersion !== undefined) update.app_version = input.appVersion;
+    if (input.connectionType !== undefined) update.connection_type = input.connectionType;
     if (input.networkType !== undefined) update.network_type = input.networkType;
     if (input.batteryLevel !== undefined) update.battery_level = input.batteryLevel;
 

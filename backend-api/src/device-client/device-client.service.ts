@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException, UnauthorizedExcepti
 import { createHash, randomBytes } from 'crypto';
 import { extname } from 'path';
 import { config } from '../config';
-import { DevicePlayStatus, DeviceRecord, DeviceSyncStatus } from '../devices/device.types';
+import { DeviceConnectionType, DevicePlayStatus, DeviceRecord, DeviceSyncStatus } from '../devices/device.types';
 import { StorageService } from '../storage/storage.service';
 import {
   DeviceClientHeartbeatBody,
@@ -48,13 +48,14 @@ export class DeviceClientService {
     const macAddress = macAddressInput || `ANDROID:${androidId}`;
     const existing = await this.storage.findDeviceForClientRegistration({ androidId, macAddress: macAddressInput });
     const appVersion = this.optionalText(body.appVersion);
+    const connectionType = this.normalizeConnectionType(body.connectionType);
     let device = existing
-      ? await this.storage.updateDeviceClientRegistration(existing.deviceId, { androidId, appVersion })
+      ? await this.storage.updateDeviceClientRegistration(existing.deviceId, { androidId, appVersion, connectionType })
       : await this.storage.createDeviceClient({
           androidId,
           macAddress,
           name: this.normalizeDeviceName(body.name, androidId, macAddress),
-          connectionType: body.connectionType === 'LAN' ? 'LAN' : '4G',
+          connectionType: connectionType || 'UNKNOWN',
           appVersion,
         });
 
@@ -77,9 +78,12 @@ export class DeviceClientService {
 
   async heartbeat(device: DeviceRecord, body: DeviceClientHeartbeatBody) {
     const batteryLevel = body.batteryLevel === undefined ? undefined : this.normalizeBatteryLevel(body.batteryLevel);
+    const networkType = body.networkType === undefined ? undefined : this.optionalText(body.networkType);
+    const connectionType = this.normalizeConnectionType(body.connectionType) || this.inferConnectionType(networkType);
     const updated = await this.storage.updateDeviceClientHeartbeat(device.deviceId, {
       appVersion: body.appVersion === undefined ? undefined : this.optionalText(body.appVersion),
-      networkType: body.networkType === undefined ? undefined : this.optionalText(body.networkType),
+      connectionType: connectionType || undefined,
+      networkType,
       batteryLevel,
     });
 
@@ -265,6 +269,20 @@ export class DeviceClientService {
   private optionalText(value: unknown) {
     const text = String(value || '').trim();
     return text || null;
+  }
+
+  private normalizeConnectionType(value: unknown): DeviceConnectionType | undefined {
+    const text = String(value || '').trim().toUpperCase();
+    if (text === 'LAN' || text === '4G' || text === 'UNKNOWN') return text;
+    return undefined;
+  }
+
+  private inferConnectionType(networkType: string | null | undefined): DeviceConnectionType | undefined {
+    const text = String(networkType || '').trim().toLowerCase();
+    if (!text) return undefined;
+    if (['wifi', 'wi-fi', 'ethernet', 'lan'].some((keyword) => text.includes(keyword))) return 'LAN';
+    if (['cellular', 'mobile', '4g', 'lte', '5g'].some((keyword) => text.includes(keyword))) return '4G';
+    return undefined;
   }
 
   private generateToken() {

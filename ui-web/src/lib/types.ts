@@ -77,7 +77,6 @@ export type DeviceInput = {
   macAddress: string;
   simNumber: string | null;
   area: string;
-  connectionType: 'LAN' | '4G';
   latitude: number | null;
   longitude: number | null;
 };
@@ -89,7 +88,7 @@ export type Device = {
   simNumber: string | null;
   androidId: string | null;
   area: string;
-  connectionType: 'LAN' | '4G';
+  connectionType: 'LAN' | '4G' | 'UNKNOWN';
   online: boolean;
   lastSeenAt: string | null;
   playAllowed: boolean;

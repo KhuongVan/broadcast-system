@@ -70,13 +70,15 @@ export class DevicesService {
     const macAddress = String(input.macAddress || '').trim().toUpperCase();
     const simNumber = String(input.simNumber || '').trim() || null;
     const area = String(input.area || '').trim() || 'Chưa phân khu';
-    const connectionType = input.connectionType === 'LAN' ? 'LAN' : input.connectionType === '4G' ? '4G' : null;
+    const connectionType =
+      input.connectionType === 'LAN' || input.connectionType === '4G' || input.connectionType === 'UNKNOWN'
+        ? input.connectionType
+        : undefined;
     const latitude = typeof input.latitude === 'number' ? input.latitude : null;
     const longitude = typeof input.longitude === 'number' ? input.longitude : null;
 
     if (!name) throw new BadRequestException('Vui long nhap ten thiet bi.');
     if (!macAddress) throw new BadRequestException('Vui long nhap dia chi MAC.');
-    if (!connectionType) throw new BadRequestException('Dang ket noi chi ho tro LAN hoac 4G.');
 
     return { name, macAddress, simNumber, area, connectionType, latitude, longitude };
   }

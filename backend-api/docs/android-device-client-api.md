@@ -54,7 +54,7 @@ Notes:
 
 - `androidId` hoac `macAddress` bat buoc co it nhat mot truong.
 - `macAddress` la optional. Neu Android khong lay duoc MAC, chi can gui `androidId`.
-- `connectionType` chi nhan `LAN` hoac `4G`; gia tri khac se duoc xem nhu `4G`.
+- `connectionType` nhan `LAN`, `4G`, hoac `UNKNOWN`. Neu khong gui, backend luu `UNKNOWN` cho thiet bi moi.
 - Neu thiet bi chua ton tai, backend tu tao thiet bi moi voi area mac dinh `Chưa phân khu`.
 - Neu da ton tai theo `androidId` hoac `macAddress`, backend tai su dung thiet bi cu va cap token moi.
 
@@ -115,6 +115,7 @@ Request body:
 ```json
 {
   "appVersion": "1.0.0",
+  "connectionType": "LAN",
   "networkType": "WIFI",
   "batteryLevel": 87
 }
@@ -123,6 +124,7 @@ Request body:
 Notes:
 
 - `batteryLevel` se duoc clamp trong khoang `0..100`.
+- `connectionType` la optional. Neu khong gui, backend se suy luan tu `networkType`: `wifi/ethernet` thanh `LAN`, `cellular/mobile/4g/lte/5g` thanh `4G`.
 
 Response example:
 
@@ -135,6 +137,7 @@ Response example:
     "lastSeenAt": "2026-06-05T03:00:30.000Z",
     "playAllowed": true,
     "playStatus": "IDLE",
+    "connectionType": "LAN",
     "appVersion": "1.0.0",
     "networkType": "WIFI",
     "batteryLevel": 87
@@ -609,7 +612,7 @@ Mot so response co `device`. Cac field quan trong:
 
 - `playStatus`: `IDLE | PLAYING | STOPPED | ERROR`
 - `syncStatus`: `SYNCED | FAILED`
-- `connectionType`: `LAN | 4G`
+- `connectionType`: `LAN | 4G | UNKNOWN`
 - `command.type` MVP: `NOOP`
 
 ### Android ID va MAC

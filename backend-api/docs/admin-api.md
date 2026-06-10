@@ -536,12 +536,12 @@ Device input:
 {
   "name": "Loa Thôn 1",
   "macAddress": "22:22:E5:6C:16:F4",
-  "area": "Thôn 1",
-  "connectionType": "4G"
+  "simNumber": "0987654321",
+  "area": "Thôn 1"
 }
 ```
 
-Allowed `connectionType`: `LAN | 4G`.
+Admin khong can gui `connectionType`; backend mac dinh `UNKNOWN` va cap nhat tu Android register/heartbeat.
 
 ### List devices
 

@@ -123,7 +123,7 @@ export function DeviceMapView({ devices, stats }: DeviceMapViewProps) {
                         <div className="popup-row"><span className="label">Tên:</span> <span className="value">{device.name}</span></div>
                         <div className="popup-row"><span className="label">Vị trí:</span> <span className="value">{device.area || 'Chưa phân khu'}</span></div>
                         <div className="popup-row"><span className="label">Mã thiết bị:</span> <span className="value">{device.macAddress}</span></div>
-                        <div className="popup-row"><span className="label">Loại kết nối:</span> <span className="value">{device.connectionType}</span></div>
+                        <div className="popup-row"><span className="label">Loại kết nối:</span> <span className="value">{getConnectionTypeLabel(device.connectionType)}</span></div>
                         <div className="popup-row">
                           <span className="label">Trạng thái:</span> 
                           <span className={`value status-${device.online ? (device.playStatus === 'PLAYING' ? 'playing' : 'online') : 'offline'}`}>
@@ -148,4 +148,10 @@ export function DeviceMapView({ devices, stats }: DeviceMapViewProps) {
       </div>
     </div>
   );
+}
+
+function getConnectionTypeLabel(connectionType: Device['connectionType']) {
+  if (connectionType === 'LAN') return 'LAN';
+  if (connectionType === '4G') return '4G';
+  return 'Chưa xác định';
 }
