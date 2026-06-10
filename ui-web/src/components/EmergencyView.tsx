@@ -2,10 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { adminApi } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import type { Device, EmergencyBroadcastSession, EmergencySource, EmergencySourceInput } from '../lib/types';
-import { DataState } from './DataState';
-import { Modal } from './Modal';
-import { Panel } from './Panel';
-import { StatusBadge } from './StatusBadge';
 
 const DURATION_OPTIONS = [15, 30, 60] as const;
 type DurationMinutes = (typeof DURATION_OPTIONS)[number];
@@ -18,19 +14,31 @@ export function EmergencyView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  // Source form state
+  // Source form
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState('');
   const [sourceForm, setSourceForm] = useState<EmergencySourceInput>({ name: '', url: '' });
 
-  // Broadcast control state
+  // Broadcast control
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
   const [durationMinutes, setDurationMinutes] = useState<DurationMinutes>(15);
+  const [deviceSearch, setDeviceSearch] = useState('');
 
-  const activeSession = useMemo(
-    () => sessions.find((s) => s.status === 'ACTIVE') || null,
-    [sessions],
+  const activeSession = useMemo(() => sessions.find((s) => s.status === 'ACTIVE') || null, [sessions]);
+
+  const filteredDevices = useMemo(
+    () =>
+      devices.filter(
+        (d) =>
+          !deviceSearch ||
+          d.name.toLowerCase().includes(deviceSearch.toLowerCase()) ||
+          d.area.toLowerCase().includes(deviceSearch.toLowerCase()),
+      ),
+    [devices, deviceSearch],
   );
+
+  const allFilteredSelected =
+    filteredDevices.length > 0 && filteredDevices.every((d) => selectedDeviceIds.has(d.deviceId));
 
   async function load() {
     setLoading(true);
@@ -51,40 +59,31 @@ export function EmergencyView() {
     }
   }
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => { void load(); }, []);
 
-  // ─── Source CRUD ────────────────────────────────────────────────────────────
-
+  // ─── Source CRUD ───────────────────────────────────────────
   function openCreateSource() {
     setEditingSourceId('');
     setSourceForm({ name: '', url: '' });
     setSourceModalOpen(true);
   }
-
   function openEditSource(source: EmergencySource) {
     setEditingSourceId(source.sourceId);
-    setSourceForm({ name: source.name, url: source.url, sortOrder: source.sortOrder });
+    setSourceForm({ name: source.name, url: source.url });
     setSourceModalOpen(true);
   }
-
   function closeSourceModal() {
     setSourceModalOpen(false);
     setEditingSourceId('');
     setSourceForm({ name: '', url: '' });
   }
-
-  async function saveSource(event: FormEvent) {
-    event.preventDefault();
+  async function saveSource(e: FormEvent) {
+    e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      if (editingSourceId) {
-        await adminApi.updateEmergencySource(editingSourceId, sourceForm);
-      } else {
-        await adminApi.createEmergencySource(sourceForm);
-      }
+      if (editingSourceId) await adminApi.updateEmergencySource(editingSourceId, sourceForm);
+      else await adminApi.createEmergencySource(sourceForm);
       closeSourceModal();
       await load();
     } catch (err) {
@@ -93,11 +92,9 @@ export function EmergencyView() {
       setBusy(false);
     }
   }
-
   async function deleteSource(sourceId: string) {
     if (!confirm('Xóa nguồn phát này?')) return;
     setBusy(true);
-    setError('');
     try {
       await adminApi.deleteEmergencySource(sourceId);
       await load();
@@ -108,30 +105,35 @@ export function EmergencyView() {
     }
   }
 
-  // ─── Broadcast control ──────────────────────────────────────────────────────
-
-  function toggleDevice(deviceId: string, checked: boolean) {
-    setSelectedDeviceIds((current) => {
-      const next = new Set(current);
-      if (checked) next.add(deviceId);
-      else next.delete(deviceId);
+  // ─── Device selection ──────────────────────────────────────
+  function toggleDevice(deviceId: string) {
+    setSelectedDeviceIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(deviceId)) next.delete(deviceId);
+      else next.add(deviceId);
       return next;
     });
   }
-
-  function toggleAllDevices(checked: boolean) {
-    setSelectedDeviceIds(checked ? new Set(devices.map((d) => d.deviceId)) : new Set());
+  function toggleAll() {
+    if (allFilteredSelected) {
+      setSelectedDeviceIds((cur) => {
+        const next = new Set(cur);
+        filteredDevices.forEach((d) => next.delete(d.deviceId));
+        return next;
+      });
+    } else {
+      setSelectedDeviceIds((cur) => {
+        const next = new Set(cur);
+        filteredDevices.forEach((d) => next.add(d.deviceId));
+        return next;
+      });
+    }
   }
 
+  // ─── Broadcast ─────────────────────────────────────────────
   async function playSource(source: EmergencySource) {
-    if (!selectedDeviceIds.size) {
-      setError('Vui lòng chọn ít nhất 1 thiết bị.');
-      return;
-    }
-    if (activeSession) {
-      setError('Đang có phiên phát khẩn cấp. Vui lòng dừng trước khi phát nguồn mới.');
-      return;
-    }
+    if (!selectedDeviceIds.size) { setError('Vui lòng chọn ít nhất 1 thiết bị.'); return; }
+    if (activeSession) { setError('Đang có phiên phát khẩn cấp. Vui lòng dừng trước.'); return; }
     setBusy(true);
     setError('');
     try {
@@ -141,7 +143,7 @@ export function EmergencyView() {
         durationMinutes,
         startedBy: 'Admin',
       });
-      setSessions((current) => [data.session, ...current]);
+      setSessions((cur) => [data.session, ...cur]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không bắt đầu được phát khẩn cấp.');
     } finally {
@@ -155,9 +157,7 @@ export function EmergencyView() {
     setError('');
     try {
       const data = await adminApi.stopEmergencyBroadcast(sessionId);
-      setSessions((current) =>
-        current.map((s) => (s.sessionId === data.session.sessionId ? data.session : s)),
-      );
+      setSessions((cur) => cur.map((s) => (s.sessionId === data.session.sessionId ? data.session : s)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không dừng được phiên phát.');
     } finally {
@@ -165,214 +165,263 @@ export function EmergencyView() {
     }
   }
 
-  const allSelected = devices.length > 0 && devices.every((d) => selectedDeviceIds.has(d.deviceId));
+  if (loading) {
+    return (
+      <div className="em-loading">
+        <div className="em-spinner" />
+        <span>Đang tải...</span>
+      </div>
+    );
+  }
 
   return (
-    <Panel
-      title="Phát khẩn cấp"
-      description="Phát ngay từ nguồn RTSP/HLS đến thiết bị được chọn với thời lượng giới hạn."
-      actions={
-        <div className="live-toolbar">
-          <button className="ghost icon-btn" disabled={loading} onClick={() => void load()} title="Tải lại" type="button">
-            ↻
-          </button>
-        </div>
-      }
-    >
-      <DataState loading={loading} error={error} empty={false} emptyText="" />
+    <div className="em-page">
 
-      {!loading ? (
-        <div className="emergency-page">
-
-          {/* Active session banner */}
-          {activeSession ? (
-            <div className="emergency-active-banner">
-              <div className="emergency-active-info">
-                <span className="emergency-active-dot" />
-                <strong>Đang phát khẩn cấp:</strong>
-                <span>{activeSession.sourceName}</span>
-                <span className="emergency-active-sep">→</span>
+      {/* ── Header status bar ── */}
+      {activeSession ? (
+        <div className="em-status-bar em-status-active">
+          <div className="em-status-left">
+            <span className="em-pulse-dot" />
+            <div>
+              <div className="em-status-title">Đang phát khẩn cấp</div>
+              <div className="em-status-meta">
+                <strong>{activeSession.sourceName}</strong>
+                <span className="em-arrow">→</span>
                 <span>{activeSession.targetLabel}</span>
-                <span className="emergency-active-duration">
-                  ({activeSession.durationMinutes} phút · Kết thúc lúc {formatDateTime(activeSession.scheduledEndAt)})
-                </span>
-              </div>
-              <button
-                className="danger"
-                disabled={busy}
-                onClick={() => void stopSession(activeSession.sessionId)}
-                type="button"
-              >
-                ■ Dừng ngay
-              </button>
-            </div>
-          ) : (
-            <div className="emergency-idle-banner">
-              <span className="emergency-idle-dot" />
-              <span>Không có phiên khẩn cấp nào đang phát</span>
-            </div>
-          )}
-
-          <div className="emergency-layout">
-            {/* Left: device selector + source list */}
-            <div className="emergency-main">
-
-              {/* Device + Duration selector */}
-              <div className="emergency-control-bar">
-                <div className="emergency-control-section">
-                  <h3 className="emergency-section-title">Thiết bị nhận phát</h3>
-                  <div className="emergency-device-list">
-                    <label className="emergency-device-item emergency-device-all">
-                      <input
-                        checked={allSelected}
-                        onChange={(e) => toggleAllDevices(e.target.checked)}
-                        type="checkbox"
-                      />
-                      <span>Chọn tất cả ({devices.length} thiết bị)</span>
-                    </label>
-                    {devices.map((device) => (
-                      <label className="emergency-device-item" key={device.deviceId}>
-                        <input
-                          checked={selectedDeviceIds.has(device.deviceId)}
-                          onChange={(e) => toggleDevice(device.deviceId, e.target.checked)}
-                          type="checkbox"
-                        />
-                        <span className="emergency-device-name">{device.name}</span>
-                        <span className={`emergency-device-status ${device.online ? 'online' : 'offline'}`}>
-                          {device.online ? '● Kết nối' : '○ Mất KN'}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="emergency-control-section emergency-duration-section">
-                  <h3 className="emergency-section-title">Thời lượng mặc định</h3>
-                  <div className="emergency-duration-options">
-                    {DURATION_OPTIONS.map((d) => (
-                      <button
-                        className={durationMinutes === d ? 'emergency-duration-btn active' : 'emergency-duration-btn'}
-                        key={d}
-                        onClick={() => setDurationMinutes(d)}
-                        type="button"
-                      >
-                        {d} phút
-                      </button>
-                    ))}
-                  </div>
-                  <p className="emergency-duration-hint">
-                    Thiết bị tự dừng sau {durationMinutes} phút. Có thể dừng sớm thủ công.
-                  </p>
-                </div>
-              </div>
-
-              {/* Source list */}
-              <div className="emergency-sources-section">
-                <div className="emergency-sources-header">
-                  <h3 className="emergency-section-title">Nguồn phát</h3>
-                  <button className="primary" disabled={busy} onClick={openCreateSource} type="button">
-                    + Thêm nguồn
-                  </button>
-                </div>
-
-                {sources.length === 0 ? (
-                  <div className="state compact">Chưa có nguồn phát nào. Thêm URL RTSP/HLS để bắt đầu.</div>
-                ) : (
-                  <div className="emergency-source-list">
-                    {sources.map((source) => (
-                      <div className="emergency-source-item" key={source.sourceId}>
-                        <div className="emergency-source-info">
-                          <strong className="emergency-source-name">{source.name}</strong>
-                          <span className="emergency-source-url" title={source.url}>{source.url}</span>
-                        </div>
-                        <div className="emergency-source-actions">
-                          <button
-                            className="ghost"
-                            disabled={busy}
-                            onClick={() => openEditSource(source)}
-                            title="Sửa nguồn"
-                            type="button"
-                          >
-                            Sửa
-                          </button>
-                          <button
-                            className="danger"
-                            disabled={busy}
-                            onClick={() => void deleteSource(source.sourceId)}
-                            title="Xóa nguồn"
-                            type="button"
-                          >
-                            Xóa
-                          </button>
-                          <button
-                            className={activeSession ? 'emergency-play-btn disabled' : 'emergency-play-btn'}
-                            disabled={busy || Boolean(activeSession)}
-                            onClick={() => void playSource(source)}
-                            title={activeSession ? 'Đang có phiên khác' : `Phát ${source.name}`}
-                            type="button"
-                          >
-                            ▶ Phát
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <span className="em-status-badge">{activeSession.durationMinutes} phút</span>
+                <span>· Kết thúc {formatDateTime(activeSession.scheduledEndAt)}</span>
               </div>
             </div>
           </div>
+          <button
+            className="em-stop-btn"
+            disabled={busy}
+            onClick={() => void stopSession(activeSession.sessionId)}
+            type="button"
+          >
+            <span className="em-stop-icon">■</span> Dừng ngay
+          </button>
+        </div>
+      ) : (
+        <div className="em-status-bar em-status-idle">
+          <div className="em-idle-dot" />
+          <span>Không có phiên khẩn cấp nào đang phát</span>
+          <button className="em-reload-btn" onClick={() => void load()} title="Tải lại" type="button">↻</button>
+        </div>
+      )}
 
-          {/* Session history */}
-          <div className="emergency-history">
-            <h3 className="emergency-section-title">Lịch sử phát khẩn cấp</h3>
-            {sessions.length === 0 ? (
-              <div className="state compact">Chưa có phiên phát khẩn cấp nào.</div>
+      {error ? <div className="em-error">{error}</div> : null}
+
+      {/* ── Main grid ── */}
+      <div className="em-grid">
+
+        {/* LEFT: Controls */}
+        <div className="em-left">
+
+          {/* Device selector card */}
+          <div className="em-card">
+            <div className="em-card-head">
+              <span className="em-card-icon">◉</span>
+              <h3 className="em-card-title">Thiết bị nhận phát</h3>
+              <span className="em-selected-count">{selectedDeviceIds.size} đã chọn</span>
+            </div>
+
+            <div className="em-device-search">
+              <span className="em-search-icon">⌕</span>
+              <input
+                className="em-search-input"
+                placeholder="Tìm thiết bị, địa bàn..."
+                value={deviceSearch}
+                onChange={(e) => setDeviceSearch(e.target.value)}
+              />
+              {deviceSearch ? (
+                <button className="em-search-clear" onClick={() => setDeviceSearch('')} type="button">✕</button>
+              ) : null}
+            </div>
+
+            <div className="em-device-list-wrap">
+              {/* Select all row */}
+              <button
+                className={`em-device-row em-device-all-row ${allFilteredSelected ? 'selected' : ''}`}
+                onClick={toggleAll}
+                type="button"
+              >
+                <span className={`em-checkbox ${allFilteredSelected ? 'checked' : ''}`}>
+                  {allFilteredSelected ? '✓' : ''}
+                </span>
+                <span className="em-device-label">
+                  Chọn tất cả
+                  <span className="em-device-sub">{filteredDevices.length} thiết bị</span>
+                </span>
+              </button>
+
+              {filteredDevices.length === 0 ? (
+                <div className="em-device-empty">Không tìm thấy thiết bị nào.</div>
+              ) : (
+                filteredDevices.map((device) => {
+                  const checked = selectedDeviceIds.has(device.deviceId);
+                  return (
+                    <button
+                      className={`em-device-row ${checked ? 'selected' : ''}`}
+                      key={device.deviceId}
+                      onClick={() => toggleDevice(device.deviceId)}
+                      type="button"
+                    >
+                      <span className={`em-checkbox ${checked ? 'checked' : ''}`}>
+                        {checked ? '✓' : ''}
+                      </span>
+                      <span className="em-device-label">
+                        {device.name}
+                        <span className="em-device-sub">{device.area}</span>
+                      </span>
+                      <span className={`em-device-dot ${device.online ? 'online' : 'offline'}`} title={device.online ? 'Đang kết nối' : 'Mất kết nối'} />
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Duration card */}
+          <div className="em-card em-duration-card">
+            <div className="em-card-head">
+              <span className="em-card-icon">⏱</span>
+              <h3 className="em-card-title">Thời lượng phát</h3>
+            </div>
+            <div className="em-duration-group">
+              {DURATION_OPTIONS.map((d) => (
+                <button
+                  className={`em-duration-btn ${durationMinutes === d ? 'active' : ''}`}
+                  key={d}
+                  onClick={() => setDurationMinutes(d)}
+                  type="button"
+                >
+                  {d} phút
+                </button>
+              ))}
+            </div>
+            <p className="em-duration-hint">
+              Thiết bị tự dừng sau <strong>{durationMinutes} phút</strong>. Có thể dừng thủ công sớm hơn.
+            </p>
+          </div>
+        </div>
+
+        {/* RIGHT: Sources */}
+        <div className="em-right">
+          <div className="em-card em-sources-card">
+            <div className="em-card-head">
+              <span className="em-card-icon">📡</span>
+              <h3 className="em-card-title">Nguồn phát</h3>
+              <button className="em-add-btn" disabled={busy} onClick={openCreateSource} type="button">
+                + Thêm nguồn
+              </button>
+            </div>
+
+            {sources.length === 0 ? (
+              <div className="em-sources-empty">
+                <div className="em-empty-icon">📻</div>
+                <p>Chưa có nguồn phát nào.</p>
+                <p className="em-empty-sub">Thêm URL RTSP hoặc HLS để bắt đầu.</p>
+              </div>
             ) : (
-              <div className="table-wrap">
-                <table>
+              <div className="em-source-list">
+                {sources.map((source) => {
+                  const canPlay = !activeSession && selectedDeviceIds.size > 0;
+                  return (
+                    <div className="em-source-item" key={source.sourceId}>
+                      <div className="em-source-left">
+                        <div className="em-source-name">{source.name}</div>
+                        <div className="em-source-url" title={source.url}>{source.url}</div>
+                      </div>
+                      <div className="em-source-actions">
+                        <button
+                          className="em-action-btn edit"
+                          disabled={busy}
+                          onClick={() => openEditSource(source)}
+                          type="button"
+                        >
+                          Sửa
+                        </button>
+                        <button
+                          className="em-action-btn delete"
+                          disabled={busy}
+                          onClick={() => void deleteSource(source.sourceId)}
+                          type="button"
+                        >
+                          Xóa
+                        </button>
+                        <button
+                          className={`em-play-btn ${!canPlay ? 'em-play-disabled' : ''}`}
+                          disabled={busy || !canPlay}
+                          onClick={() => void playSource(source)}
+                          title={
+                            activeSession
+                              ? 'Đang có phiên khác đang phát'
+                              : !selectedDeviceIds.size
+                                ? 'Chọn thiết bị trước'
+                                : `Phát ${source.name} đến ${selectedDeviceIds.size} thiết bị trong ${durationMinutes} phút`
+                          }
+                          type="button"
+                        >
+                          <span>▶</span> Phát
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* History */}
+          <div className="em-card em-history-card">
+            <div className="em-card-head">
+              <span className="em-card-icon">📋</span>
+              <h3 className="em-card-title">Lịch sử phát khẩn cấp</h3>
+            </div>
+            {sessions.length === 0 ? (
+              <div className="em-history-empty">Chưa có phiên nào.</div>
+            ) : (
+              <div className="em-table-wrap">
+                <table className="em-table">
                   <thead>
                     <tr>
                       <th>Nguồn</th>
-                      <th>URL</th>
                       <th>Thiết bị</th>
                       <th>Thời lượng</th>
                       <th>Bắt đầu</th>
-                      <th>Kết thúc dự kiến</th>
+                      <th>Kết thúc DK</th>
                       <th>Trạng thái</th>
-                      <th>Hành động</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {sessions.map((session) => (
                       <tr key={session.sessionId}>
-                        <td><strong>{session.sourceName}</strong></td>
                         <td>
-                          <span className="emergency-source-url-cell" title={session.sourceUrl}>
-                            {session.sourceUrl.length > 40 ? session.sourceUrl.slice(0, 40) + '…' : session.sourceUrl}
-                          </span>
+                          <div className="em-history-name">{session.sourceName}</div>
+                          <div className="em-history-url">{session.sourceUrl.length > 35 ? session.sourceUrl.slice(0, 35) + '…' : session.sourceUrl}</div>
                         </td>
                         <td>{session.targetLabel}</td>
                         <td>{session.durationMinutes} phút</td>
                         <td>{formatDateTime(session.startedAt)}</td>
                         <td>{formatDateTime(session.scheduledEndAt)}</td>
                         <td>
-                          <StatusBadge tone={sessionTone(session.status)}>
-                            {sessionLabel(session.status)}
-                          </StatusBadge>
+                          <span className={`em-status-pill ${session.status === 'ACTIVE' ? 'active' : session.status === 'CANCELLED' ? 'cancelled' : 'done'}`}>
+                            {session.status === 'ACTIVE' ? '● Đang phát' : session.status === 'CANCELLED' ? '✕ Đã dừng' : '✓ Hoàn thành'}
+                          </span>
                         </td>
                         <td>
                           {session.status === 'ACTIVE' ? (
                             <button
-                              className="danger"
+                              className="em-action-btn delete"
                               disabled={busy}
                               onClick={() => void stopSession(session.sessionId)}
                               type="button"
                             >
                               Dừng
                             </button>
-                          ) : (
-                            <span className="subtext">—</span>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     ))}
@@ -381,57 +430,53 @@ export function EmergencyView() {
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* Source modal */}
-          {sourceModalOpen ? (
-            <Modal
-              title={editingSourceId ? 'Sửa nguồn phát' : 'Thêm nguồn phát'}
-              onClose={closeSourceModal}
-            >
-              <form className="form-panel" onSubmit={saveSource}>
-                <label>
-                  Tên nguồn <span className="required">*</span>
-                  <input
-                    placeholder="VD: VOV2, Đài tỉnh..."
-                    required
-                    value={sourceForm.name}
-                    onChange={(e) => setSourceForm((f) => ({ ...f, name: e.target.value }))}
-                  />
-                </label>
-                <label>
-                  URL (RTSP/HLS) <span className="required">*</span>
-                  <input
-                    placeholder="VD: http://... hoặc rtsp://..."
-                    required
-                    value={sourceForm.url}
-                    onChange={(e) => setSourceForm((f) => ({ ...f, url: e.target.value }))}
-                  />
-                </label>
-                <div className="modal-footer">
-                  <button className="ghost" onClick={closeSourceModal} type="button">
-                    Hủy
-                  </button>
-                  <button className="primary" disabled={busy || !sourceForm.name.trim() || !sourceForm.url.trim()} type="submit">
-                    {editingSourceId ? 'Lưu' : 'Thêm'}
-                  </button>
-                </div>
-              </form>
-            </Modal>
-          ) : null}
+      {/* Modal */}
+      {sourceModalOpen ? (
+        <div className="em-modal-backdrop" onClick={closeSourceModal}>
+          <div className="em-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="em-modal-head">
+              <h2>{editingSourceId ? 'Sửa nguồn phát' : 'Thêm nguồn phát'}</h2>
+              <button className="em-modal-close" onClick={closeSourceModal} type="button">✕</button>
+            </div>
+            <form className="em-modal-body" onSubmit={saveSource}>
+              <label className="em-field">
+                <span className="em-field-label">Tên nguồn <span className="em-req">*</span></span>
+                <input
+                  className="em-field-input"
+                  placeholder="VD: VOV2, Đài tỉnh, TTXVN..."
+                  required
+                  value={sourceForm.name}
+                  onChange={(e) => setSourceForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </label>
+              <label className="em-field">
+                <span className="em-field-label">Stream URL <span className="em-req">*</span></span>
+                <input
+                  className="em-field-input"
+                  placeholder="http://... hoặc rtsp://..."
+                  required
+                  value={sourceForm.url}
+                  onChange={(e) => setSourceForm((f) => ({ ...f, url: e.target.value }))}
+                />
+                <span className="em-field-hint">Hỗ trợ HLS (.m3u8), RTSP, HTTP stream</span>
+              </label>
+              <div className="em-modal-footer">
+                <button className="em-cancel-btn" onClick={closeSourceModal} type="button">Hủy</button>
+                <button
+                  className="em-save-btn"
+                  disabled={busy || !sourceForm.name.trim() || !sourceForm.url.trim()}
+                  type="submit"
+                >
+                  {editingSourceId ? 'Lưu thay đổi' : 'Thêm nguồn'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       ) : null}
-    </Panel>
+    </div>
   );
-}
-
-function sessionLabel(status: EmergencyBroadcastSession['status']) {
-  if (status === 'ACTIVE') return 'Đang phát';
-  if (status === 'CANCELLED') return 'Đã dừng';
-  return 'Hoàn thành';
-}
-
-function sessionTone(status: EmergencyBroadcastSession['status']): 'ok' | 'warn' | 'neutral' {
-  if (status === 'ACTIVE') return 'ok';
-  if (status === 'CANCELLED') return 'warn';
-  return 'neutral';
 }

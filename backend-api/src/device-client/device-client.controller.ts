@@ -5,8 +5,9 @@ import { config } from '../config';
 import { DeviceClientAuthGuard } from './device-client-auth.guard';
 import { DeviceClientService } from './device-client.service';
 import {
-  DeviceClientHeartbeatBody,
   DeviceClientCommandResultBody,
+  DeviceClientEmergencyFinishedBody,
+  DeviceClientHeartbeatBody,
   DeviceClientMicTestUploadBody,
   DeviceClientPlaybackStateBody,
   DeviceClientRecordingStatusBody,
@@ -86,5 +87,15 @@ export class DeviceClientController {
   @UseGuards(DeviceClientAuthGuard)
   updateRecordingStatus(@Req() request: DeviceClientRequest, @Body() body: DeviceClientRecordingStatusBody) {
     return this.deviceClient.updateRecordingStatus(request.deviceClient!, body);
+  }
+
+  /**
+   * Device gọi endpoint này khi tự dừng phát khẩn cấp sau khi hết giờ.
+   * Body: { sessionId: string }
+   */
+  @Post('/emergency-finished')
+  @UseGuards(DeviceClientAuthGuard)
+  emergencyFinished(@Req() request: DeviceClientRequest, @Body() body: DeviceClientEmergencyFinishedBody) {
+    return this.deviceClient.emergencyFinished(request.deviceClient!, body);
   }
 }

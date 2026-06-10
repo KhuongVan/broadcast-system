@@ -52,3 +52,7 @@ export type DeviceClientRecordingStatusBody = {
   status?: 'RECORDING' | 'UPLOADING' | 'FAILED';
   message?: string;
 };
+
+export type DeviceClientEmergencyFinishedBody = {
+  sessionId?: string;
+};

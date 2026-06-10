@@ -6,6 +6,7 @@ import { DeviceConnectionType, DevicePlayStatus, DeviceRecord, DeviceSyncStatus 
 import { StorageService } from '../storage/storage.service';
 import {
   DeviceClientCommandResultBody,
+  DeviceClientEmergencyFinishedBody,
   DeviceClientHeartbeatBody,
   DeviceClientMicTestUploadBody,
   DeviceClientPlaybackStateBody,
@@ -220,9 +221,6 @@ export class DeviceClientService {
     if (!commandId) throw new BadRequestException('Vui long gui commandId.');
     const status = this.normalizeCommandResultStatus(body.status);
     const appliedVolumeLevel = body.appliedVolumeLevel === undefined ? null : this.normalizeVolumeLevel(body.appliedVolumeLevel);
-    if (status === 'SUCCEEDED' && appliedVolumeLevel === null) {
-      throw new BadRequestException('Vui long gui appliedVolumeLevel khi lenh thanh cong.');
-    }
 
     const updated = await this.storage.updateDeviceCommandResult(device.deviceId, commandId, {
       status,
@@ -246,6 +244,24 @@ export class DeviceClientService {
       recording,
       serverTime: this.serverTime(),
     };
+  }
+
+  /**
+   * Device báo hiệu đã tự dừng phát khẩn cấp sau khi hết thời lượng.
+   * Server cập nhật trạng thái session sang FINISHED nếu chưa kết thúc.
+   */
+  async emergencyFinished(device: DeviceRecord, body: DeviceClientEmergencyFinishedBody) {
+    const sessionId = this.optionalText(body.sessionId);
+    if (!sessionId) {
+      return { success: true, serverTime: this.serverTime() };
+    }
+
+    const session = await this.storage.getEmergencyBroadcastSession(sessionId);
+    if (session && session.status === 'ACTIVE') {
+      await this.storage.finishEmergencyBroadcastSession(sessionId, 'FINISHED');
+    }
+
+    return { success: true, serverTime: this.serverTime() };
   }
 
   private async getFreshDevice(deviceId: string) {
