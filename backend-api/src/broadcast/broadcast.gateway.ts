@@ -16,6 +16,7 @@ import { PlaylistRecord } from '../playlists/playlist.types';
 import { PlaylistsService } from '../playlists/playlists.service';
 import { BroadcastScheduleRecord } from '../schedules/schedule.types';
 import { SchedulesService } from '../schedules/schedules.service';
+import { StorageService } from '../storage/storage.service';
 
 type PlayCachedPayload = {
   fileId: string;
@@ -25,6 +26,22 @@ type PlayCachedPayload = {
 type PlayHlsFilePayload = {
   fileId: string;
   resetPosition?: boolean;
+};
+
+type LiveTargetPayload = {
+  targetType?: 'AREA' | 'DEVICE';
+  targetArea?: string | null;
+  targetDeviceIds?: string[];
+};
+
+type ClientRegisterDevicePayload = {
+  deviceId?: string;
+};
+
+type ActiveLiveTarget = {
+  targetType: 'AREA' | 'DEVICE';
+  targetArea: string | null;
+  targetDeviceIds: string[];
 };
 
 type ActivePlaylistSession = {
@@ -53,6 +70,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private pausedNormalScheduleId: string | null = null;
   private scheduleStreamRestartTimer: ReturnType<typeof setTimeout> | null = null;
   private scheduleStreamRestartAttempts = 0;
+  private activeLiveTarget: ActiveLiveTarget | null = null;
 
   constructor(
     private readonly auth: AuthService,
@@ -60,6 +78,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     private readonly media: MediaService,
     private readonly playlists: PlaylistsService,
     private readonly schedules: SchedulesService,
+    private readonly storage: StorageService,
   ) {}
 
   onModuleInit() {
@@ -94,7 +113,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
 
     const active = this.media.getActiveStream();
-    if (active?.hlsReady) {
+    if (active?.hlsReady && active.type !== 'MIC') {
       client.emit('client_update', {
         action: 'START',
         streamVersion: active.version,
@@ -156,19 +175,23 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   }
 
   @SubscribeMessage('admin_play_live')
-  async handlePlayLive(@ConnectedSocket() client: Socket) {
+  async handlePlayLive(@MessageBody() payload: LiveTargetPayload, @ConnectedSocket() client: Socket) {
     try {
+      const target = this.normalizeLiveTarget(payload);
       client.emit('admin_status', { status: 'STARTING', type: 'MIC' });
       this.pauseActivePlaylist();
       this.clearActiveSchedule();
+      this.activeLiveTarget = target;
       const result = await this.media.startLiveMic(() => {
-        this.server.emit('client_update', { action: 'STOP' });
+        this.emitToLiveTarget({ action: 'STOP' });
+        this.activeLiveTarget = null;
       });
-      this.server.emit('client_update', { action: 'START', streamVersion: result.version });
+      this.emitToLiveTarget({ action: 'START', streamVersion: result.version });
       client.emit('admin_status', { status: 'STARTED', type: 'MIC', streamVersion: result.version });
     } catch (error) {
       client.emit('admin_error', { message: error instanceof Error ? error.message : 'Khong phat duoc live mic.' });
-      this.server.emit('client_update', { action: 'STOP' });
+      this.emitToLiveTarget({ action: 'STOP' });
+      this.activeLiveTarget = null;
     }
   }
 
@@ -177,14 +200,61 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     this.media.writeMicChunk(Buffer.from(chunk));
   }
 
+  @SubscribeMessage('client_register_device')
+  async handleClientRegisterDevice(@MessageBody() payload: ClientRegisterDevicePayload, @ConnectedSocket() client: Socket) {
+    const deviceId = String(payload?.deviceId || '').trim();
+    if (!deviceId) {
+      client.emit('client_registration_status', {
+        status: 'DEMO_GLOBAL',
+        message: 'Đang chạy chế độ demo global. Thêm ?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.',
+      });
+      return;
+    }
+
+    const device = await this.storage.getDevice(deviceId);
+    if (!device) {
+      client.emit('client_registration_status', {
+        status: 'ERROR',
+        message: 'Không tìm thấy thiết bị mô phỏng.',
+        deviceId,
+      });
+      return;
+    }
+
+    await client.join(this.deviceRoom(device.deviceId));
+    await client.join(this.areaRoom(device.area));
+    client.emit('client_registration_status', {
+      status: 'REGISTERED',
+      device: {
+        deviceId: device.deviceId,
+        name: device.name,
+        area: device.area,
+      },
+    });
+
+    const active = this.media.getActiveStream();
+    if (active?.hlsReady && active.type === 'MIC' && this.socketMatchesLiveTarget(device.deviceId, device.area)) {
+      client.emit('client_update', {
+        action: 'START',
+        streamVersion: active.version,
+      });
+    }
+  }
+
   @SubscribeMessage('admin_stop')
   handleStop() {
     this.pauseActivePlaylist();
     this.clearScheduleStreamRestart();
     this.clearActiveSchedule();
+    const wasLiveTargeted = this.media.getActiveStream()?.type === 'MIC' && Boolean(this.activeLiveTarget);
     this.media.stop('admin_stop');
-    this.server.emit('STOP');
-    this.server.emit('client_update', { action: 'STOP' });
+    if (wasLiveTargeted) {
+      this.emitToLiveTarget({ action: 'STOP' });
+      this.activeLiveTarget = null;
+    } else {
+      this.server.emit('STOP');
+      this.server.emit('client_update', { action: 'STOP' });
+    }
     this.emitScheduleStatus();
   }
 
@@ -526,5 +596,57 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       activeSchedule: this.activeSchedule,
       pausedSchedule: this.pausedSchedule,
     });
+  }
+
+  private normalizeLiveTarget(payload: LiveTargetPayload = {}): ActiveLiveTarget {
+    const targetType = payload.targetType === 'AREA' ? 'AREA' : 'DEVICE';
+    const targetArea = String(payload.targetArea || '').trim();
+    const targetDeviceIds = Array.isArray(payload.targetDeviceIds)
+      ? payload.targetDeviceIds.map((deviceId) => String(deviceId || '').trim()).filter(Boolean)
+      : [];
+
+    if (targetType === 'AREA') {
+      if (!targetArea) throw new Error('Vui lòng chọn địa bàn phát.');
+      return { targetType, targetArea, targetDeviceIds: [] };
+    }
+
+    if (!targetDeviceIds.length) throw new Error('Vui lòng chọn thiết bị phát.');
+    return { targetType, targetArea: null, targetDeviceIds };
+  }
+
+  private emitToLiveTarget(payload: { action: 'START' | 'STOP'; streamVersion?: number }) {
+    const target = this.activeLiveTarget;
+    if (!target) {
+      this.server.emit('client_update', payload);
+      return;
+    }
+
+    if (target.targetType === 'AREA' && target.targetArea) {
+      this.server.to(this.areaRoom(target.targetArea)).emit('client_update', payload);
+      return;
+    }
+
+    for (const deviceId of target.targetDeviceIds) {
+      this.server.to(this.deviceRoom(deviceId)).emit('client_update', payload);
+    }
+  }
+
+  private socketMatchesLiveTarget(deviceId: string, area: string) {
+    const target = this.activeLiveTarget;
+    if (!target) return false;
+    if (target.targetType === 'AREA') return this.normalizeRoomPart(target.targetArea || '') === this.normalizeRoomPart(area);
+    return target.targetDeviceIds.includes(deviceId);
+  }
+
+  private deviceRoom(deviceId: string) {
+    return `device:${deviceId}`;
+  }
+
+  private areaRoom(area: string) {
+    return `area:${this.normalizeRoomPart(area)}`;
+  }
+
+  private normalizeRoomPart(value: string) {
+    return String(value || '').trim().toLowerCase();
   }
 }

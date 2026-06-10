@@ -1687,6 +1687,16 @@ export class PagesController {
       line-height: 1.45;
       overflow-wrap: anywhere;
     }
+    .device-card {
+      margin-top: 18px;
+      padding: 12px 16px;
+      border: 1px solid rgba(255,255,255,.38);
+      border-radius: 8px;
+      background: rgba(0,0,0,.1);
+      color: rgba(255,255,255,.95);
+      font-size: 16px;
+      line-height: 1.45;
+    }
     .label {
       display: block;
       opacity: .85;
@@ -1716,6 +1726,7 @@ export class PagesController {
       <span class="label">Bản tin đang phát</span>
       <strong id="currentFileName">Chưa có bản tin</strong>
     </div>
+    <div class="device-card" id="deviceInfo">Đang kiểm tra chế độ thiết bị...</div>
     <button id="playBtn">NHẤN ĐỂ KẾT NỐI LOA</button>
   </div>
   <audio id="audio" style="display:none"></audio>
@@ -1728,6 +1739,9 @@ export class PagesController {
     const btn = document.getElementById('playBtn');
     const statusEl = document.getElementById('status');
     const currentFileNameEl = document.getElementById('currentFileName');
+    const deviceInfoEl = document.getElementById('deviceInfo');
+    const params = new URLSearchParams(window.location.search);
+    const simulatedDeviceId = (params.get('deviceId') || '').trim();
     const DB_NAME = 'broadcast-cache';
     const STORE_NAME = 'audio-files';
     let dbPromise = null;
@@ -1747,6 +1761,10 @@ export class PagesController {
 
     function setCurrentFileName(name) {
       currentFileNameEl.innerText = name || 'Chưa có bản tin';
+    }
+
+    function setDeviceInfo(message) {
+      deviceInfoEl.innerText = message;
     }
 
     function loadStoredPositions() {
@@ -2012,6 +2030,24 @@ export class PagesController {
 
     btn.addEventListener('click', () => audio.play().catch(() => null));
 
+    socket.on('connect', () => {
+      socket.emit('client_register_device', { deviceId: simulatedDeviceId });
+    });
+
+    socket.on('client_registration_status', (payload) => {
+      if (payload.status === 'REGISTERED' && payload.device) {
+        setDeviceInfo('Thiết bị mô phỏng: ' + payload.device.name + ' | Địa bàn: ' + payload.device.area + ' | ID: ' + payload.device.deviceId);
+        return;
+      }
+
+      if (payload.status === 'ERROR') {
+        setDeviceInfo((payload.message || 'Không đăng ký được thiết bị mô phỏng.') + ' ID: ' + (payload.deviceId || simulatedDeviceId || 'trống'));
+        return;
+      }
+
+      setDeviceInfo(payload.message || 'Chế độ demo global: không kiểm tra được target thiết bị/địa bàn.');
+    });
+
     socket.on('FILE_AVAILABLE', (file) => {
       ensureCached(file).catch((error) => {
         socket.emit('client_file_error', { fileId: file.fileId, message: error.message });
@@ -2034,6 +2070,11 @@ export class PagesController {
       loadStoredPositions();
       setStatus('CHỜ PHÁT THANH...');
       setCurrentFileName('');
+      if (simulatedDeviceId) {
+        setDeviceInfo('Đang đăng ký thiết bị mô phỏng: ' + simulatedDeviceId);
+      } else {
+        setDeviceInfo('Chế độ demo global. Mở /client?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.');
+      }
     });
   </script>
 </body>

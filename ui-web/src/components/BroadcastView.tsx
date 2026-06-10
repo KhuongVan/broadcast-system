@@ -169,7 +169,11 @@ export function BroadcastView() {
       setTitle('');
       streamRef.current = stream;
 
-      if (!emit('admin_play_live')) {
+      if (!emit('admin_play_live', {
+        targetType,
+        targetArea: targetType === 'AREA' ? target.id : null,
+        targetDeviceIds: targetType === 'DEVICE' ? [target.id] : [],
+      })) {
         stopTracks();
         await failActiveSession('Socket chưa kết nối.');
         return;

@@ -362,7 +362,7 @@ schedule_run_logs (run_log_id, schedule_id, started_at, ended_at, status, messag
 
 -- Thiết bị
 devices (
-  device_id, organization_id, name, mac_address, android_id,
+  device_id, organization_id, name, mac_address, sim_number, android_id,
   area, connection_type,
   online, last_seen_at,
   play_allowed, play_status, current_schedule_id,
@@ -453,7 +453,7 @@ Kết nối tới `/` (root namespace) với cookie phiên đăng nhập.
 | `admin_file_uploaded` | `{ fileId }` | Thông báo file mới upload |
 | `admin_play_cached` | `{ fileId, resetPosition? }` | Phát file từ cache |
 | `admin_play_hls_file` | `{ fileId, resetPosition? }` | Phát file qua HLS |
-| `admin_play_live` | — | Bắt đầu live mic |
+| `admin_play_live` | `{ targetType, targetArea?, targetDeviceIds? }` | Bắt đầu live mic theo thiết bị/địa bàn |
 | `admin_mic_chunk` | `ArrayBuffer` | Chunk âm thanh mic |
 | `admin_stop` | — | Dừng tất cả |
 | `admin_pause_schedule` | — | Tạm dừng lịch đang chạy |
@@ -466,6 +466,7 @@ Kết nối tới `/` (root namespace) với cookie phiên đăng nhập.
 | `client_file_ended` | `{ fileId }` | File phát xong |
 | `client_file_ready` | `{ fileId }` | File sẵn sàng phát |
 | `client_file_error` | `{ fileId, message }` | Lỗi phát file |
+| `client_register_device` | `{ deviceId? }` | Đăng ký browser `/client?deviceId=<id>` để mô phỏng thiết bị/địa bàn |
 
 ---
 

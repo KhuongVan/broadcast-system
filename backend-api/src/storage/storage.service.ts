@@ -67,6 +67,7 @@ type DeviceRow = {
   device_id: string;
   name: string;
   mac_address: string;
+  sim_number: string | null;
   android_id: string | null;
   device_token_hash: string | null;
   area: string;
@@ -645,6 +646,7 @@ export class StorageService {
       .insert({
         name: input.name,
         mac_address: input.macAddress,
+        sim_number: input.simNumber,
         area: input.area,
         connection_type: input.connectionType,
         latitude: input.latitude,
@@ -763,6 +765,7 @@ export class StorageService {
       .update({
         name: input.name,
         mac_address: input.macAddress,
+        sim_number: input.simNumber,
         area: input.area,
         connection_type: input.connectionType,
         latitude: input.latitude,
@@ -1085,6 +1088,7 @@ export class StorageService {
       deviceId: row.device_id,
       name: row.name,
       macAddress: row.mac_address,
+      simNumber: row.sim_number || null,
       androidId: row.android_id || null,
       area: row.area,
       connectionType: row.connection_type,

@@ -558,6 +558,7 @@ Response:
       "deviceId": "uuid",
       "name": "Loa Thôn 1",
       "macAddress": "22:22:E5:6C:16:F4",
+      "simNumber": "0987654321",
       "androidId": null,
       "area": "Thôn 1",
       "connectionType": "4G",
@@ -603,7 +604,7 @@ POST /api/devices
 Content-Type: application/json
 ```
 
-Request: device input.
+Request: device input, including optional `simNumber`.
 
 ### Update device
 
@@ -612,7 +613,7 @@ PUT /api/devices/:deviceId
 Content-Type: application/json
 ```
 
-Request: device input.
+Request: device input, including optional `simNumber`.
 
 ### Delete device
 
@@ -784,7 +785,27 @@ Server start HLS stream and emit `client_update`.
 admin_play_live
 ```
 
-Start live mic stream.
+Payload:
+
+```json
+{
+  "targetType": "AREA",
+  "targetArea": "Khu A",
+  "targetDeviceIds": []
+}
+```
+
+Or target one or more devices:
+
+```json
+{
+  "targetType": "DEVICE",
+  "targetArea": null,
+  "targetDeviceIds": ["uuid"]
+}
+```
+
+Start live mic stream for the selected area/device rooms.
 
 ```text
 admin_mic_chunk

@@ -75,6 +75,7 @@ export type ScheduleInput = {
 export type DeviceInput = {
   name: string;
   macAddress: string;
+  simNumber: string | null;
   area: string;
   connectionType: 'LAN' | '4G';
   latitude: number | null;
@@ -85,6 +86,7 @@ export type Device = {
   deviceId: string;
   name: string;
   macAddress: string;
+  simNumber: string | null;
   androidId: string | null;
   area: string;
   connectionType: 'LAN' | '4G';

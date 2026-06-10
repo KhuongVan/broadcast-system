@@ -19,6 +19,7 @@ type DevicesViewProps = {
 const emptyDevice: DeviceInput = {
   name: '',
   macAddress: '',
+  simNumber: '',
   area: '',
   connectionType: '4G',
   latitude: null,
@@ -44,7 +45,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     const keyword = search.trim().toLowerCase();
     if (!keyword) return devices;
     return devices.filter((device) =>
-      [device.name, device.macAddress, device.area, device.connectionType, device.networkType]
+      [device.name, device.macAddress, device.simNumber, device.area, device.connectionType, device.networkType]
         .some((value) => String(value || '').toLowerCase().includes(keyword)),
     );
   }, [devices, search]);
@@ -88,6 +89,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     setForm({
       name: device.name,
       macAddress: device.macAddress,
+      simNumber: device.simNumber,
       area: device.area,
       connectionType: device.connectionType,
       latitude: device.latitude,
@@ -352,6 +354,10 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                       <input value={form.macAddress} onChange={(event) => update('macAddress', event.target.value)} required />
                     </label>
                     <label>
+                      Số SIM
+                      <input value={form.simNumber || ''} onChange={(event) => update('simNumber', event.target.value || null)} placeholder="VD: 0987654321" />
+                    </label>
+                    <label>
                       Khu vực
                       <input value={form.area} onChange={(event) => update('area', event.target.value)} placeholder="Chưa phân khu" />
                     </label>
@@ -464,6 +470,7 @@ function DeviceInfoCell({ device }: { device: Device }) {
     <td>
       <strong>{device.name}</strong>
       <div className="subtext">{device.macAddress}</div>
+      {device.simNumber ? <div className="subtext">SIM {device.simNumber}</div> : null}
       <div className="subtext">{device.area || 'Chưa phân khu'}</div>
       {device.appVersion ? <div className="subtext">App {device.appVersion}</div> : null}
     </td>

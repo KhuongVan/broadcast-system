@@ -98,6 +98,7 @@ create table if not exists devices (
   device_id uuid primary key default gen_random_uuid(),
   name text not null,
   mac_address text not null unique,
+  sim_number text,
   android_id text,
   device_token_hash text,
   area text not null,
@@ -286,3 +287,6 @@ values
   ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'SYNCED', now() - interval '1 hour', 'Da tai lich xuong thiet bi demo.'),
   ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'FAILED', null, 'Thiet bi dang mat ket noi.')
 on conflict (device_id) do nothing;
+
+alter table devices
+add column if not exists sim_number text;

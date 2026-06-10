@@ -40,7 +40,7 @@ const menu: MenuEntry[] = [
     icon: '◉',
     eyebrow: 'Thiết bị và kết nối',
     children: [
-      { key: 'devices:map', label: 'Bản đồ', icon: '⊕', eyebrow: 'Quản lý thiết bị / Bản đồ' },
+      { key: 'devices:map', label: 'Giám sát trực tuyến', icon: '⊕', eyebrow: 'Quản lý thiết bị / Giám sát trực tuyến' },
       { key: 'devices:operate', label: 'Vận hành', icon: '▶', eyebrow: 'Quản lý thiết bị / Vận hành' },
       { key: 'devices:settings', label: 'Cài đặt', icon: '⚙', eyebrow: 'Quản lý thiết bị / Cài đặt' },
       { key: 'devices:logs', label: 'Nhật ký', icon: '≡', eyebrow: 'Quản lý thiết bị / Nhật ký' },
