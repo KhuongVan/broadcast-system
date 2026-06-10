@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Device } from '../lib/types';
@@ -40,9 +40,11 @@ function MapUpdater({ center, zoom }: { center: [number, number] | null; zoom?: 
 type DeviceMapViewProps = {
   devices: Device[];
   stats: { total: number; online: number; offline: number; playing: number };
+  search: string;
+  onSearchChange: (value: string) => void;
 };
 
-export function DeviceMapView({ devices, stats }: DeviceMapViewProps) {
+export function DeviceMapView({ devices, stats, search, onSearchChange }: DeviceMapViewProps) {
   const [activeDevice, setActiveDevice] = useState<Device | null>(null);
   
   const groupedDevices = useMemo(() => {
@@ -55,29 +57,46 @@ export function DeviceMapView({ devices, stats }: DeviceMapViewProps) {
     return groups;
   }, [devices]);
 
+  useEffect(() => {
+    if (activeDevice && !devices.some((device) => device.deviceId === activeDevice.deviceId)) {
+      setActiveDevice(null);
+    }
+  }, [activeDevice, devices]);
+
   return (
     <div className="device-map-page">
-      <div className="device-map-stats">
-        <div className="stat-item playing">
-          <span className="dot"></span>
-          Đang phát: <strong>{stats.playing}</strong>
+      <div className="device-map-topbar">
+        <div className="device-map-stats">
+          <div className="stat-item playing">
+            <span className="dot"></span>
+            Đang phát: <strong>{stats.playing}</strong>
+          </div>
+          <div className="stat-item online">
+            <span className="dot"></span>
+            Đã kết nối: <strong>{stats.online}</strong>
+          </div>
+          <div className="stat-item offline">
+            <span className="dot"></span>
+            Mất kết nối: <strong>{stats.offline}</strong>
+          </div>
+          <div className="stat-item total">
+            Tổng thiết bị: <strong>{stats.total}</strong>
+          </div>
         </div>
-        <div className="stat-item online">
-          <span className="dot"></span>
-          Đã kết nối: <strong>{stats.online}</strong>
-        </div>
-        <div className="stat-item offline">
-          <span className="dot"></span>
-          Mất kết nối: <strong>{stats.offline}</strong>
-        </div>
-        <div className="stat-item total">
-          Tổng thiết bị: <strong>{stats.total}</strong>
+
+        <div className="device-map-search">
+          <input
+            aria-label="Tìm kiếm thiết bị trên bản đồ"
+            placeholder="Tìm theo tên, MAC, khu vực, kết nối..."
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
         </div>
       </div>
 
       <div className="device-map-layout">
         <div className="device-map-sidebar">
-          {Object.entries(groupedDevices).map(([area, areaDevices]) => (
+          {devices.length ? Object.entries(groupedDevices).map(([area, areaDevices]) => (
             <div key={area} className="area-group">
               <div className="area-header">
                 {area} <span>({areaDevices.filter(d => d.online).length}/{areaDevices.length})</span>
@@ -96,7 +115,9 @@ export function DeviceMapView({ devices, stats }: DeviceMapViewProps) {
                 ))}
               </div>
             </div>
-          ))}
+          )) : (
+            <div className="device-map-empty">Không tìm thấy thiết bị phù hợp.</div>
+          )}
         </div>
 
         <div className="device-map-container">

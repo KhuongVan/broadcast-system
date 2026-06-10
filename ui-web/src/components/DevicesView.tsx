@@ -44,23 +44,20 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   const operationSchedules = useMemo(() => schedules, [schedules]);
 
   const filteredDevices = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+    const keyword = normalizeSearchText(search);
     if (!keyword) return devices;
-    return devices.filter((device) =>
-      [device.name, device.macAddress, device.simNumber, device.area, device.connectionType, device.networkType]
-        .some((value) => String(value || '').toLowerCase().includes(keyword)),
-    );
+    return devices.filter((device) => getDeviceSearchValues(device).some((value) => normalizeSearchText(value).includes(keyword)));
   }, [devices, search]);
 
-  const stats = useMemo(() => {
-    const online = devices.filter((device) => device.online).length;
+  const visibleStats = useMemo(() => {
+    const online = filteredDevices.filter((device) => device.online).length;
     return {
-      total: devices.length,
+      total: filteredDevices.length,
       online,
-      offline: Math.max(devices.length - online, 0),
-      playing: devices.filter((device) => device.playStatus === 'PLAYING').length,
+      offline: Math.max(filteredDevices.length - online, 0),
+      playing: filteredDevices.filter((device) => device.playStatus === 'PLAYING').length,
     };
-  }, [devices]);
+  }, [filteredDevices]);
 
   async function load() {
     setLoading(true);
@@ -243,7 +240,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       {!loading ? (
         <div className="device-page">
           {activeSection === 'map' ? (
-            <DeviceMapView devices={filteredDevices} stats={stats} />
+            <DeviceMapView devices={filteredDevices} stats={visibleStats} search={search} onSearchChange={setSearch} />
           ) : null}
 
           {activeSection === 'operate' ? (
@@ -287,9 +284,9 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                     </div>
                     <strong className="selected-device-count">Đã chọn {selectedDeviceIds.size} thiết bị</strong>
                     <div className="device-operation-stats">
-                      <span>Tổng thiết bị: <strong>{stats.total}</strong></span>
-                      <span>Kết nối: <strong>{stats.online}</strong></span>
-                      <span>Mất kết nối: <strong>{stats.offline}</strong></span>
+                      <span>Tổng thiết bị: <strong>{visibleStats.total}</strong></span>
+                      <span>Kết nối: <strong>{visibleStats.online}</strong></span>
+                      <span>Mất kết nối: <strong>{visibleStats.offline}</strong></span>
                     </div>
                   </div>
 
@@ -499,6 +496,30 @@ function DeviceSearch({ value, onChange }: { value: string; onChange: (value: st
       <input placeholder="Tìm theo tên, MAC, khu vực, kết nối..." value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
+}
+
+function getDeviceSearchValues(device: Device) {
+  return [
+    device.name,
+    device.macAddress,
+    device.simNumber,
+    device.area,
+    device.connectionType,
+    getConnectionTypeLabel(device.connectionType),
+    device.networkType,
+    device.online ? 'Kết nối Đã kết nối' : 'Mất kết nối',
+    getPlayStatusLabel(device),
+    device.activeSchedule?.name,
+    device.currentSchedule?.name,
+  ];
+}
+
+function normalizeSearchText(value: unknown) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 function downloadCsv(fileName: string, rows: string[][]) {
