@@ -1139,6 +1139,13 @@ audio {
   flex: 1;
 }
 
+.section-toolbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .select-col {
   text-align: center;
   width: 44px;

@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { adminApi } from '../lib/api';
 import { formatDateTime, formatStatus } from '../lib/format';
 import type { Device, DeviceInput, Schedule } from '../lib/types';
@@ -37,6 +38,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const operationSchedules = useMemo(() => schedules, [schedules]);
 
@@ -184,6 +186,44 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     await adminApi.stopDevice(deviceId);
   }
 
+  function exportDevicesCsv() {
+    const rows = [
+      ['Tên thiết bị', 'MAC', 'Số SIM', 'Khu vực', 'Dạng kết nối', 'Trạng thái online', 'Trạng thái phát', 'Lịch đã tải', 'Đồng bộ'],
+      ...devices.map((device) => [
+        device.name,
+        device.macAddress,
+        device.simNumber || '',
+        device.area,
+        getConnectionTypeLabel(device.connectionType),
+        device.online ? 'Kết nối' : 'Mất kết nối',
+        getPlayStatusLabel(device),
+        device.activeSchedule?.name || '',
+        getSyncStatusLabel(device.syncStatus),
+      ]),
+    ];
+    downloadCsv('devices.csv', rows);
+  }
+
+  async function importDevices(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setSaving(true);
+    setError('');
+    try {
+      const rows = await readDeviceImportRows(file);
+      const inputs = rows.map(toDeviceInputFromCsv).filter((input): input is DeviceInput => Boolean(input));
+      if (!inputs.length) throw new Error('File nhập không có thiết bị hợp lệ.');
+      await Promise.all(inputs.map((input) => adminApi.createDevice(input)));
+      await load();
+      alert(`Đã nhập ${inputs.length} thiết bị.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không nhập được thiết bị.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   useEffect(() => {
     void load();
   }, []);
@@ -301,9 +341,18 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
             <>
               <div className="section-toolbar">
                 <DeviceSearch value={search} onChange={setSearch} />
-                <button className="primary" onClick={openCreateModal} type="button">
-                  Thêm thiết bị
-                </button>
+                <div className="section-toolbar-actions">
+                  <button className="primary" onClick={openCreateModal} type="button">
+                    Thêm mới
+                  </button>
+                  <button className="primary" disabled={saving} onClick={() => importInputRef.current?.click()} type="button">
+                    Nhập thiết bị
+                  </button>
+                  <button className="primary" disabled={!devices.length} onClick={exportDevicesCsv} type="button">
+                    Xuất thiết bị
+                  </button>
+                  <input accept=".csv,.xlsx,.xls" hidden ref={importInputRef} onChange={(event) => void importDevices(event)} type="file" />
+                </div>
               </div>
               <div>
                 <div className="table-wrap">
@@ -424,6 +473,103 @@ function DeviceSearch({ value, onChange }: { value: string; onChange: (value: st
       <input placeholder="Tìm theo tên, MAC, khu vực, kết nối..." value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
+}
+
+function downloadCsv(fileName: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function escapeCsvCell(value: string) {
+  return `"${String(value || '').replace(/"/g, '""')}"`;
+}
+
+async function readDeviceImportRows(file: File) {
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (extension === 'xlsx' || extension === 'xls') {
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) return [];
+    return XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[firstSheetName], {
+      header: 1,
+      blankrows: false,
+      defval: '',
+    });
+  }
+
+  return parseCsv(await file.text());
+}
+
+function parseCsv(content: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      row.push(cell);
+      cell = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && next === '\n') index += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+}
+
+function toDeviceInputFromCsv(row: string[], index: number, rows: string[][]): DeviceInput | null {
+  const header = index === 0 ? row.map(normalizeCsvHeader) : rows[0]?.map(normalizeCsvHeader) || [];
+  if (index === 0 && header.some((value) => ['name', 'tenthietbi', 'mac', 'macaddress'].includes(value))) return null;
+
+  const valueByHeader = (names: string[]) => {
+    const columnIndex = header.findIndex((value) => names.includes(value));
+    return columnIndex >= 0 ? row[columnIndex]?.trim() || '' : '';
+  };
+
+  const name = valueByHeader(['name', 'tenthietbi']) || row[0]?.trim() || '';
+  const macAddress = valueByHeader(['mac', 'macaddress', 'diachimac']) || row[1]?.trim() || '';
+  const simNumber = valueByHeader(['sim', 'sosim', 'simnumber']) || row[2]?.trim() || '';
+  const area = valueByHeader(['area', 'khuvuc']) || row[3]?.trim() || '';
+
+  if (!name || !macAddress) return null;
+  return {
+    name,
+    macAddress,
+    simNumber: simNumber || null,
+    area,
+    latitude: null,
+    longitude: null,
+  };
+}
+
+function normalizeCsvHeader(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
 }
 
 function formatScheduleWindow(schedule: Schedule) {
