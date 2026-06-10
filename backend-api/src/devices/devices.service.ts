@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { StorageService } from '../storage/storage.service';
 import { DeviceInput } from './device.types';
 
+const RECORDING_MAX_DURATION_SECONDS = 60;
+
 @Injectable()
 export class DevicesService {
   constructor(private readonly storage: StorageService) {}
@@ -35,6 +37,23 @@ export class DevicesService {
   async updateVolume(deviceId: string, volumeLevel: unknown) {
     await this.getDevice(deviceId);
     return this.storage.updateDeviceVolume(deviceId, this.normalizeVolumeLevel(volumeLevel));
+  }
+
+  async listRecordings(deviceId: string) {
+    await this.getDevice(deviceId);
+    return this.storage.listDeviceRecordings(deviceId);
+  }
+
+  async startRecording(deviceId: string) {
+    await this.getDevice(deviceId);
+    return this.storage.startDeviceRecording(deviceId, RECORDING_MAX_DURATION_SECONDS);
+  }
+
+  async stopRecording(deviceId: string, recordingId: string) {
+    await this.getDevice(deviceId);
+    const normalizedRecordingId = String(recordingId || '').trim();
+    if (!normalizedRecordingId) throw new BadRequestException('Vui long gui recordingId.');
+    return this.storage.stopDeviceRecording(deviceId, normalizedRecordingId);
   }
 
   async playNow(deviceId: string, scheduleId: string) {

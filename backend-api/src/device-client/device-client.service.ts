@@ -9,6 +9,7 @@ import {
   DeviceClientHeartbeatBody,
   DeviceClientMicTestUploadBody,
   DeviceClientPlaybackStateBody,
+  DeviceClientRecordingStatusBody,
   DeviceClientRegisterBody,
   DeviceClientSyncResultBody,
 } from './device-client.types';
@@ -171,6 +172,7 @@ export class DeviceClientService {
       extension: this.getMicTestExtension(file),
       durationSeconds: this.normalizeDurationSeconds(body.durationSeconds),
       message: this.optionalText(body.message),
+      recordingId: this.optionalText(body.recordingId),
     });
 
     return {
@@ -234,6 +236,18 @@ export class DeviceClientService {
     };
   }
 
+  async updateRecordingStatus(device: DeviceRecord, body: DeviceClientRecordingStatusBody) {
+    const recordingId = this.optionalText(body.recordingId);
+    if (!recordingId) throw new BadRequestException('Vui long gui recordingId.');
+    const status = this.normalizeRecordingStatus(body.status);
+    const recording = await this.storage.updateDeviceRecordingStatus(device.deviceId, recordingId, status, this.optionalText(body.message));
+
+    return {
+      recording,
+      serverTime: this.serverTime(),
+    };
+  }
+
   private async getFreshDevice(deviceId: string) {
     const device = await this.storage.getDevice(deviceId);
     if (!device) throw new NotFoundException('Khong tim thay thiet bi.');
@@ -260,6 +274,11 @@ export class DeviceClientService {
   private normalizeCommandResultStatus(status: string | undefined) {
     if (status === 'SUCCEEDED' || status === 'FAILED') return status;
     throw new BadRequestException('status chi ho tro SUCCEEDED hoac FAILED.');
+  }
+
+  private normalizeRecordingStatus(status: string | undefined) {
+    if (status === 'RECORDING' || status === 'UPLOADING' || status === 'FAILED') return status;
+    throw new BadRequestException('recording status chi ho tro RECORDING, UPLOADING hoac FAILED.');
   }
 
   private normalizeVolumeLevel(value: unknown) {

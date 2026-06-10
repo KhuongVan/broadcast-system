@@ -278,7 +278,7 @@ on devices(deleted_at);
 create table if not exists device_commands (
   command_id uuid primary key default gen_random_uuid(),
   device_id uuid not null references devices(device_id) on delete cascade,
-  type text not null check (type in ('SET_VOLUME')),
+  type text not null check (type in ('SET_VOLUME', 'START_RECORDING', 'STOP_RECORDING')),
   payload jsonb not null default '{}'::jsonb,
   status text not null default 'PENDING' check (status in ('PENDING', 'DELIVERED', 'SUCCEEDED', 'FAILED', 'SUPERSEDED')),
   message text,
@@ -287,6 +287,21 @@ create table if not exists device_commands (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table device_commands
+drop constraint if exists device_commands_type_check;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'device_commands_type_check'
+  ) then
+    alter table device_commands
+    add constraint device_commands_type_check check (type in ('SET_VOLUME', 'START_RECORDING', 'STOP_RECORDING'));
+  end if;
+end $$;
 
 create index if not exists idx_device_commands_pending
 on device_commands(device_id, status, created_at);
@@ -308,6 +323,26 @@ create table if not exists device_mic_test_uploads (
 
 create index if not exists idx_device_mic_test_uploads_device_created
 on device_mic_test_uploads(device_id, created_at desc);
+
+create table if not exists device_recording_sessions (
+  recording_id uuid primary key default gen_random_uuid(),
+  device_id uuid not null references devices(device_id) on delete cascade,
+  status text not null default 'REQUESTED' check (status in ('REQUESTED', 'RECORDING', 'STOP_REQUESTED', 'UPLOADING', 'COMPLETED', 'FAILED', 'EXPIRED')),
+  started_at timestamptz,
+  stopped_at timestamptz,
+  uploaded_at timestamptz,
+  duration_seconds int,
+  message text,
+  upload_id uuid references device_mic_test_uploads(upload_id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_device_recording_sessions_device_created
+on device_recording_sessions(device_id, created_at desc);
+
+create index if not exists idx_device_recording_sessions_device_status
+on device_recording_sessions(device_id, status);
 
 create table if not exists device_schedule_assignments (
   assignment_id uuid primary key default gen_random_uuid(),

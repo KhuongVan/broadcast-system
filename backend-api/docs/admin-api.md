@@ -676,6 +676,74 @@ Response:
 }
 ```
 
+### List device recordings
+
+Lay danh sach phien ghi am kiem tra gan nhat cua thiet bi. Ban ghi hoan tat co `audioUrl` de admin nghe lai.
+
+```http
+GET /api/devices/:deviceId/recordings
+```
+
+Response:
+
+```json
+{
+  "recordings": [
+    {
+      "recordingId": "uuid",
+      "deviceId": "uuid",
+      "status": "COMPLETED",
+      "durationSeconds": 12,
+      "message": "Da upload file ghi am.",
+      "audioUrl": "https://signed-url.example.com/mic-test.webm",
+      "uploadedAt": "2026-06-05T03:05:00.000Z"
+    }
+  ]
+}
+```
+
+Allowed `status`: `REQUESTED | RECORDING | STOP_REQUESTED | UPLOADING | COMPLETED | FAILED | EXPIRED`.
+
+### Start device recording
+
+Tao phien ghi am va gui lenh `START_RECORDING` cho thiet bi. Thiet bi tu dung sau toi da 60 giay.
+
+```http
+POST /api/devices/:deviceId/recordings/start
+```
+
+Response:
+
+```json
+{
+  "recording": {
+    "recordingId": "uuid",
+    "status": "REQUESTED",
+    "message": "Dang cho thiet bi bat dau ghi am."
+  }
+}
+```
+
+### Stop device recording
+
+Gui lenh `STOP_RECORDING` cho phien ghi am dang chay.
+
+```http
+POST /api/devices/:deviceId/recordings/:recordingId/stop
+```
+
+Response:
+
+```json
+{
+  "recording": {
+    "recordingId": "uuid",
+    "status": "STOP_REQUESTED",
+    "message": "Dang yeu cau thiet bi dung ghi am."
+  }
+}
+```
+
 ### Play now
 
 ```http

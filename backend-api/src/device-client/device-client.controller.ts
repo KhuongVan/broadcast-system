@@ -9,6 +9,7 @@ import {
   DeviceClientCommandResultBody,
   DeviceClientMicTestUploadBody,
   DeviceClientPlaybackStateBody,
+  DeviceClientRecordingStatusBody,
   DeviceClientRegisterBody,
   DeviceClientRequest,
   DeviceClientSyncResultBody,
@@ -79,5 +80,11 @@ export class DeviceClientController {
   @UseGuards(DeviceClientAuthGuard)
   updateCommandResult(@Req() request: DeviceClientRequest, @Body() body: DeviceClientCommandResultBody) {
     return this.deviceClient.updateCommandResult(request.deviceClient!, body);
+  }
+
+  @Post('/recording-status')
+  @UseGuards(DeviceClientAuthGuard)
+  updateRecordingStatus(@Req() request: DeviceClientRequest, @Body() body: DeviceClientRecordingStatusBody) {
+    return this.deviceClient.updateRecordingStatus(request.deviceClient!, body);
   }
 }

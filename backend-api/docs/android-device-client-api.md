@@ -476,6 +476,7 @@ Form-data:
 audio: <recorded audio file>
 durationSeconds: 3
 message: "Mic self-test from Android"
+recordingId: "99999999-9999-9999-9999-999999999999"  # optional, khi upload file cho phien ghi am do admin yeu cau
 ```
 
 Allowed formats:
@@ -535,7 +536,7 @@ Notes:
 
 - File duoc luu rieng trong Storage path `mic-tests/<deviceId>/<uploadId>.<ext>`.
 - File test mic khong xuat hien trong danh sach `/api/files` va khong tu dong them vao playlist.
-- Muon test loa phat ra am thanh tu file nay se can flow rieng o v2.
+- Neu gui `recordingId`, backend gan file vao phien ghi am va admin co the nghe lai trong man hinh thiet bi.
 
 Loi thuong gap:
 
@@ -545,7 +546,7 @@ Loi thuong gap:
 
 ### Get commands
 
-Poll lenh tu backend. Neu admin chua gui lenh moi, endpoint tra `NOOP`. Neu admin dieu chinh am luong, endpoint tra `SET_VOLUME`.
+Poll lenh tu backend. Neu admin chua gui lenh moi, endpoint tra `NOOP`. Cac lenh hien co gom `SET_VOLUME`, `START_RECORDING`, va `STOP_RECORDING`.
 
 ```http
 GET /api/device-client/commands
@@ -581,9 +582,44 @@ Response voi lenh am luong:
 }
 ```
 
+Response voi lenh bat dau ghi am:
+
+```json
+{
+  "serverTime": "2026-06-05T03:04:00.000Z",
+  "deviceId": "11111111-1111-1111-1111-111111111111",
+  "command": {
+    "commandId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "type": "START_RECORDING",
+    "payload": {
+      "recordingId": "99999999-9999-9999-9999-999999999999",
+      "maxDurationSeconds": 60
+    }
+  }
+}
+```
+
+Response voi lenh dung ghi am:
+
+```json
+{
+  "serverTime": "2026-06-05T03:04:20.000Z",
+  "deviceId": "11111111-1111-1111-1111-111111111111",
+  "command": {
+    "commandId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "type": "STOP_RECORDING",
+    "payload": {
+      "recordingId": "99999999-9999-9999-9999-999999999999"
+    }
+  }
+}
+```
+
 Notes:
 
 - `SET_VOLUME.payload.volumeLevel` la so nguyen tu `0` den `15`.
+- Khi nhan `START_RECORDING`, Android bat dau ghi am tu mic va goi `POST /api/device-client/recording-status` voi `RECORDING`.
+- Khi nhan `STOP_RECORDING` hoac den `maxDurationSeconds`, Android dung ghi, bao `UPLOADING`, roi upload file bang `mic-test-upload` kem `recordingId`.
 - Sau khi ap dung lenh vao thiet bi that, Android phai goi `POST /api/device-client/command-result`.
 - Neu thiet bi khong ap dung duoc am luong, gui `status=FAILED` kem `message`.
 
@@ -593,6 +629,48 @@ cURL:
 curl "https://<backend-host>/api/device-client/commands" \
   -H "Authorization: Bearer <deviceToken>"
 ```
+
+### Update recording status
+
+Bao trang thai ghi am do admin yeu cau.
+
+```http
+POST /api/device-client/recording-status
+Authorization: Bearer <deviceToken>
+Content-Type: application/json
+```
+
+Request examples:
+
+```json
+{
+  "recordingId": "99999999-9999-9999-9999-999999999999",
+  "status": "RECORDING",
+  "message": "Recording started"
+}
+```
+
+```json
+{
+  "recordingId": "99999999-9999-9999-9999-999999999999",
+  "status": "UPLOADING",
+  "message": "Recording stopped, uploading"
+}
+```
+
+```json
+{
+  "recordingId": "99999999-9999-9999-9999-999999999999",
+  "status": "FAILED",
+  "message": "Microphone permission denied"
+}
+```
+
+Allowed `status`:
+
+- `RECORDING`
+- `UPLOADING`
+- `FAILED`
 
 ### Update command result
 
@@ -680,7 +758,7 @@ Mot so response co `device`. Cac field quan trong:
 - `syncStatus`: `SYNCED | FAILED`
 - `connectionType`: `LAN | 4G | UNKNOWN`
 - `volumeSyncStatus`: `PENDING | SYNCED | FAILED`
-- `command.type`: `NOOP | SET_VOLUME`
+- `command.type`: `NOOP | SET_VOLUME | START_RECORDING | STOP_RECORDING`
 
 ### Android ID va MAC
 

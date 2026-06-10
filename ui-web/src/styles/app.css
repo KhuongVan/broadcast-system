@@ -993,6 +993,29 @@ audio {
   width: 78px;
 }
 
+.recording-control {
+  display: grid;
+  gap: 7px;
+  min-width: 220px;
+}
+
+.recording-control .row-actions {
+  gap: 6px;
+}
+
+.recording-control .compact {
+  min-height: 32px;
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+.recording-audio {
+  display: block;
+  height: 32px;
+  max-width: 240px;
+  width: 100%;
+}
+
 .device-command-panel {
   align-items: end;
   background: linear-gradient(135deg, #1359ff, #1631bb);

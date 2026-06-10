@@ -115,6 +115,26 @@ export type Device = {
   updatedAt: string;
 };
 
+export type DeviceRecordingStatus = 'REQUESTED' | 'RECORDING' | 'STOP_REQUESTED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
+
+export type DeviceRecordingSession = {
+  recordingId: string;
+  deviceId: string;
+  status: DeviceRecordingStatus;
+  startedAt: string | null;
+  stoppedAt: string | null;
+  uploadedAt: string | null;
+  durationSeconds: number | null;
+  message: string | null;
+  uploadId: string | null;
+  audioUrl: string | null;
+  fileName: string | null;
+  mimetype: string | null;
+  size: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TtsVoice = {
   code: string;
   label: string;

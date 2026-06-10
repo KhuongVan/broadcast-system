@@ -2,6 +2,7 @@ import type {
   AudioFile,
   Device,
   DeviceInput,
+  DeviceRecordingSession,
   LiveBroadcastCreateInput,
   LiveBroadcastSession,
   Playlist,
@@ -140,6 +141,15 @@ export const adminApi = {
     api<{ device: Device }>(`/api/devices/${deviceId}/volume`, {
       method: 'PUT',
       json: { volumeLevel },
+    }),
+  listDeviceRecordings: (deviceId: string) => api<{ recordings: DeviceRecordingSession[] }>(`/api/devices/${deviceId}/recordings`),
+  startDeviceRecording: (deviceId: string) =>
+    api<{ recording: DeviceRecordingSession }>(`/api/devices/${deviceId}/recordings/start`, {
+      method: 'POST',
+    }),
+  stopDeviceRecording: (deviceId: string, recordingId: string) =>
+    api<{ recording: DeviceRecordingSession }>(`/api/devices/${deviceId}/recordings/${recordingId}/stop`, {
+      method: 'POST',
     }),
   playDeviceNow: (deviceId: string, scheduleId: string) =>
     api<{ device: Device }>(`/api/devices/${deviceId}/play-now`, {

@@ -421,6 +421,9 @@ device_mic_test_uploads (upload_id, device_id, file_name, storage_path, duration
 | `DELETE` | `/api/devices/:id` | Xóa thiết bị (soft delete) |
 | `PUT`  | `/api/devices/:id/play-allowed` | Bật/tắt phép phát |
 | `PUT`  | `/api/devices/:id/volume` | Điều chỉnh âm lượng mong muốn 0-15 |
+| `GET`  | `/api/devices/:id/recordings` | Danh sách bản ghi kiểm tra |
+| `POST` | `/api/devices/:id/recordings/start` | Bắt đầu ghi âm kiểm tra |
+| `POST` | `/api/devices/:id/recordings/:recordingId/stop` | Dừng ghi âm kiểm tra |
 | `POST` | `/api/devices/:id/play-now` | Phát ngay (RTSP schedule) |
 | `POST` | `/api/devices/:id/stop` | Dừng phát |
 | `POST` | `/api/devices/:id/sync-schedule` | Đồng bộ lịch xuống thiết bị |
@@ -483,9 +486,10 @@ API dành riêng cho Android App (thiết bị loa). Xác thực bằng `Authori
 | `GET`  | `/api/device-client/schedule` | Lấy lịch phát được gán |
 | `POST` | `/api/device-client/playback-state` | Báo cáo trạng thái phát |
 | `POST` | `/api/device-client/sync-result` | Báo kết quả đồng bộ lịch |
-| `POST` | `/api/device-client/mic-test-upload` | Upload file kiểm tra mic |
-| `GET`  | `/api/device-client/commands` | Poll lệnh từ server (`NOOP`, `SET_VOLUME`) |
+| `POST` | `/api/device-client/mic-test-upload` | Upload file kiểm tra mic / ghi âm |
+| `GET`  | `/api/device-client/commands` | Poll lệnh từ server (`NOOP`, `SET_VOLUME`, `START_RECORDING`, `STOP_RECORDING`) |
 | `POST` | `/api/device-client/command-result` | Báo kết quả thực thi lệnh |
+| `POST` | `/api/device-client/recording-status` | Báo trạng thái ghi âm kiểm tra |
 
 ### Register Request
 ```json

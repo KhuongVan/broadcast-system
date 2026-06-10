@@ -103,7 +103,8 @@ type DeviceRow = {
 };
 
 type DeviceCommandStatus = 'PENDING' | 'DELIVERED' | 'SUCCEEDED' | 'FAILED' | 'SUPERSEDED';
-type DeviceCommandType = 'SET_VOLUME';
+type DeviceCommandType = 'SET_VOLUME' | 'START_RECORDING' | 'STOP_RECORDING';
+type DeviceRecordingStatus = 'REQUESTED' | 'RECORDING' | 'STOP_REQUESTED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
 
 type DeviceCommandRow = {
   command_id: string;
@@ -154,6 +155,20 @@ type DeviceMicTestUploadRow = {
   created_at: string;
 };
 
+type DeviceRecordingSessionRow = {
+  recording_id: string;
+  device_id: string;
+  status: DeviceRecordingStatus;
+  started_at: string | null;
+  stopped_at: string | null;
+  uploaded_at: string | null;
+  duration_seconds: number | null;
+  message: string | null;
+  upload_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type LiveBroadcastSessionRow = {
   session_id: string;
   title: string;
@@ -193,6 +208,24 @@ export type DeviceMicTestUploadRecord = {
   message: string | null;
   createdAt: string;
   url: string;
+};
+
+export type DeviceRecordingSessionRecord = {
+  recordingId: string;
+  deviceId: string;
+  status: DeviceRecordingStatus;
+  startedAt: string | null;
+  stoppedAt: string | null;
+  uploadedAt: string | null;
+  durationSeconds: number | null;
+  message: string | null;
+  uploadId: string | null;
+  audioUrl: string | null;
+  fileName: string | null;
+  mimetype: string | null;
+  size: number | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 @Injectable()
@@ -292,7 +325,13 @@ export class StorageService {
     extension: string;
     durationSeconds: number | null;
     message: string | null;
+    recordingId?: string | null;
   }) {
+    if (input.recordingId) {
+      const recording = await this.getDeviceRecordingRow(input.deviceId, input.recordingId);
+      if (!recording) throw new Error('Khong tim thay phien ghi am de upload file.');
+    }
+
     if (!input.file.buffer) {
       throw new Error('Upload phai dung memory storage de gui len Supabase.');
     }
@@ -333,7 +372,180 @@ export class StorageService {
       throw new Error(`Khong ghi metadata test mic: ${insertError.message}`);
     }
 
+    if (input.recordingId) {
+      await this.completeDeviceRecording(input.deviceId, input.recordingId, uploadId, input.durationSeconds, input.message);
+    }
+
     return this.toDeviceMicTestUploadRecord(row);
+  }
+
+  async startDeviceRecording(deviceId: string, maxDurationSeconds: number) {
+    await this.expireStaleDeviceRecordings(deviceId, maxDurationSeconds);
+    const active = await this.getActiveDeviceRecording(deviceId);
+    if (active) {
+      throw new Error('Thiet bi dang co phien ghi am chua hoan tat.');
+    }
+
+    const now = new Date().toISOString();
+    const recordingId = randomUUID();
+    const { data, error } = await this.supabase
+      .from('device_recording_sessions')
+      .insert({
+        recording_id: recordingId,
+        device_id: deviceId,
+        status: 'REQUESTED',
+        message: 'Dang cho thiet bi bat dau ghi am.',
+        updated_at: now,
+      })
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong tao duoc phien ghi am: ${error.message}`);
+    }
+
+    const { error: commandError } = await this.supabase.from('device_commands').insert({
+      device_id: deviceId,
+      type: 'START_RECORDING',
+      payload: { recordingId, maxDurationSeconds },
+      status: 'PENDING',
+      updated_at: now,
+    });
+
+    if (commandError) {
+      throw new Error(`Khong tao duoc lenh ghi am: ${commandError.message}`);
+    }
+
+    if (!data) throw new Error('Khong tao duoc phien ghi am.');
+    return this.toDeviceRecordingSessionRecord(data as DeviceRecordingSessionRow);
+  }
+
+  async stopDeviceRecording(deviceId: string, recordingId: string) {
+    const now = new Date().toISOString();
+    const recording = await this.getDeviceRecordingRow(deviceId, recordingId);
+    if (!recording) throw new Error('Khong tim thay phien ghi am.');
+    if (!['REQUESTED', 'RECORDING', 'STOP_REQUESTED', 'UPLOADING'].includes(recording.status)) {
+      return this.toDeviceRecordingSessionRecord(recording);
+    }
+
+    const { data, error } = await this.supabase
+      .from('device_recording_sessions')
+      .update({
+        status: recording.status === 'UPLOADING' ? 'UPLOADING' : 'STOP_REQUESTED',
+        stopped_at: recording.stopped_at || now,
+        message: recording.status === 'UPLOADING' ? recording.message : 'Dang yeu cau thiet bi dung ghi am.',
+        updated_at: now,
+      })
+      .eq('recording_id', recordingId)
+      .eq('device_id', deviceId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong dung duoc phien ghi am: ${error.message}`);
+    }
+
+    if (recording.status !== 'UPLOADING') {
+      const { error: supersedeStartError } = await this.supabase
+        .from('device_commands')
+        .update({
+          status: 'SUPERSEDED',
+          message: 'Admin da yeu cau dung ghi am truoc khi lenh bat dau duoc xu ly.',
+          completed_at: now,
+          updated_at: now,
+        })
+        .eq('device_id', deviceId)
+        .eq('type', 'START_RECORDING')
+        .eq('status', 'PENDING')
+        .contains('payload', { recordingId });
+
+      if (supersedeStartError) {
+        throw new Error(`Khong huy duoc lenh bat dau ghi am: ${supersedeStartError.message}`);
+      }
+
+      const { error: commandError } = await this.supabase.from('device_commands').insert({
+        device_id: deviceId,
+        type: 'STOP_RECORDING',
+        payload: { recordingId },
+        status: 'PENDING',
+        updated_at: now,
+      });
+
+      if (commandError) {
+        throw new Error(`Khong tao duoc lenh dung ghi am: ${commandError.message}`);
+      }
+    }
+
+    if (!data) throw new Error('Khong tim thay phien ghi am.');
+    return this.toDeviceRecordingSessionRecord(data as DeviceRecordingSessionRow);
+  }
+
+  async listDeviceRecordings(deviceId: string, limit = 10) {
+    await this.expireStaleDeviceRecordings(deviceId);
+    const { data, error } = await this.supabase
+      .from('device_recording_sessions')
+      .select('*')
+      .eq('device_id', deviceId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw new Error(`Khong doc duoc danh sach ghi am: ${error.message}`);
+    }
+
+    return Promise.all(((data || []) as DeviceRecordingSessionRow[]).map((row) => this.toDeviceRecordingSessionRecord(row)));
+  }
+
+  async updateDeviceRecordingStatus(
+    deviceId: string,
+    recordingId: string,
+    status: 'RECORDING' | 'UPLOADING' | 'FAILED',
+    message: string | null,
+  ) {
+    const now = new Date().toISOString();
+    const recording = await this.getDeviceRecordingRow(deviceId, recordingId);
+    if (!recording) throw new Error('Khong tim thay phien ghi am.');
+
+    const update: Record<string, unknown> = {
+      status,
+      message:
+        message ||
+        (status === 'RECORDING'
+          ? 'Thiet bi dang ghi am.'
+          : status === 'UPLOADING'
+            ? 'Thiet bi dang upload file ghi am.'
+            : 'Thiet bi ghi am that bai.'),
+      updated_at: now,
+    };
+
+    if (status === 'RECORDING') update.started_at = recording.started_at || now;
+    if (status === 'UPLOADING') update.stopped_at = recording.stopped_at || now;
+    if (status === 'FAILED') update.stopped_at = recording.stopped_at || now;
+
+    const { data, error } = await this.supabase
+      .from('device_recording_sessions')
+      .update(update)
+      .eq('recording_id', recordingId)
+      .eq('device_id', deviceId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc trang thai ghi am: ${error.message}`);
+    }
+
+    if (status === 'RECORDING') {
+      await this.completeDeviceCommandByRecording(deviceId, recordingId, 'START_RECORDING', 'SUCCEEDED', message);
+    }
+    if (status === 'FAILED') {
+      await this.completeDeviceCommandByRecording(deviceId, recordingId, 'START_RECORDING', 'FAILED', message);
+    }
+    if (status === 'UPLOADING' || status === 'FAILED') {
+      await this.completeDeviceCommandByRecording(deviceId, recordingId, 'STOP_RECORDING', status === 'FAILED' ? 'FAILED' : 'SUCCEEDED', message);
+    }
+
+    if (!data) throw new Error('Khong tim thay phien ghi am.');
+    return this.toDeviceRecordingSessionRecord(data as DeviceRecordingSessionRow);
   }
 
   async createSignedUrl(storagePath: string) {
@@ -361,6 +573,152 @@ export class StorageService {
       createdAt: row.created_at,
       url: await this.createSignedUrl(row.storage_path),
     };
+  }
+
+  private async toDeviceRecordingSessionRecord(row: DeviceRecordingSessionRow): Promise<DeviceRecordingSessionRecord> {
+    const upload = row.upload_id ? await this.getDeviceMicTestUploadRow(row.upload_id) : null;
+    return {
+      recordingId: row.recording_id,
+      deviceId: row.device_id,
+      status: row.status,
+      startedAt: row.started_at,
+      stoppedAt: row.stopped_at,
+      uploadedAt: row.uploaded_at,
+      durationSeconds: row.duration_seconds,
+      message: row.message,
+      uploadId: row.upload_id,
+      audioUrl: upload ? await this.createSignedUrl(upload.storage_path) : null,
+      fileName: upload?.file_name || null,
+      mimetype: upload?.mimetype || null,
+      size: upload ? Number(upload.size) : null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private async getDeviceMicTestUploadRow(uploadId: string) {
+    const { data, error } = await this.supabase
+      .from('device_mic_test_uploads')
+      .select('*')
+      .eq('upload_id', uploadId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong doc duoc file ghi am: ${error.message}`);
+    }
+
+    return data ? (data as DeviceMicTestUploadRow) : null;
+  }
+
+  private async getDeviceRecordingRow(deviceId: string, recordingId: string) {
+    const { data, error } = await this.supabase
+      .from('device_recording_sessions')
+      .select('*')
+      .eq('recording_id', recordingId)
+      .eq('device_id', deviceId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong doc duoc phien ghi am: ${error.message}`);
+    }
+
+    return data ? (data as DeviceRecordingSessionRow) : null;
+  }
+
+  private async getActiveDeviceRecording(deviceId: string) {
+    const { data, error } = await this.supabase
+      .from('device_recording_sessions')
+      .select('*')
+      .eq('device_id', deviceId)
+      .in('status', ['REQUESTED', 'RECORDING', 'STOP_REQUESTED', 'UPLOADING'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong doc duoc phien ghi am dang chay: ${error.message}`);
+    }
+
+    return data ? (data as DeviceRecordingSessionRow) : null;
+  }
+
+  private async expireStaleDeviceRecordings(deviceId: string, maxDurationSeconds = 60) {
+    const expiresBefore = new Date(Date.now() - maxDurationSeconds * 1000).toISOString();
+    const now = new Date().toISOString();
+    const { error } = await this.supabase
+      .from('device_recording_sessions')
+      .update({
+        status: 'EXPIRED',
+        stopped_at: now,
+        message: 'Phien ghi am da tu dong het han.',
+        updated_at: now,
+      })
+      .eq('device_id', deviceId)
+      .in('status', ['REQUESTED', 'RECORDING', 'STOP_REQUESTED'])
+      .lt('created_at', expiresBefore);
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc phien ghi am het han: ${error.message}`);
+    }
+  }
+
+  private async completeDeviceRecording(
+    deviceId: string,
+    recordingId: string,
+    uploadId: string,
+    durationSeconds: number | null,
+    message: string | null,
+  ) {
+    const now = new Date().toISOString();
+    const recording = await this.getDeviceRecordingRow(deviceId, recordingId);
+    if (!recording) throw new Error('Khong tim thay phien ghi am de gan file.');
+
+    const { error } = await this.supabase
+      .from('device_recording_sessions')
+      .update({
+        status: 'COMPLETED',
+        stopped_at: recording.stopped_at || now,
+        uploaded_at: now,
+        duration_seconds: durationSeconds,
+        message: message || 'Da upload file ghi am.',
+        upload_id: uploadId,
+        updated_at: now,
+      })
+      .eq('recording_id', recordingId)
+      .eq('device_id', deviceId);
+
+    if (error) {
+      throw new Error(`Khong hoan tat duoc phien ghi am: ${error.message}`);
+    }
+
+    await this.completeDeviceCommandByRecording(deviceId, recordingId, 'START_RECORDING', 'SUCCEEDED', message);
+    await this.completeDeviceCommandByRecording(deviceId, recordingId, 'STOP_RECORDING', 'SUCCEEDED', message);
+  }
+
+  private async completeDeviceCommandByRecording(
+    deviceId: string,
+    recordingId: string,
+    type: Extract<DeviceCommandType, 'START_RECORDING' | 'STOP_RECORDING'>,
+    status: 'SUCCEEDED' | 'FAILED',
+    message: string | null,
+  ) {
+    const now = new Date().toISOString();
+    const { error } = await this.supabase
+      .from('device_commands')
+      .update({
+        status,
+        message,
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('device_id', deviceId)
+      .eq('type', type)
+      .in('status', ['PENDING', 'DELIVERED'])
+      .contains('payload', { recordingId });
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc lenh ghi am: ${error.message}`);
+    }
   }
 
   async listPlaylists() {

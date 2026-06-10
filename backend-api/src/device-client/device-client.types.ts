@@ -37,11 +37,18 @@ export type DeviceClientSyncResultBody = {
 export type DeviceClientMicTestUploadBody = {
   durationSeconds?: number | string;
   message?: string;
+  recordingId?: string;
 };
 
 export type DeviceClientCommandResultBody = {
   commandId?: string;
   status?: 'SUCCEEDED' | 'FAILED';
   appliedVolumeLevel?: number;
+  message?: string;
+};
+
+export type DeviceClientRecordingStatusBody = {
+  recordingId?: string;
+  status?: 'RECORDING' | 'UPLOADING' | 'FAILED';
   message?: string;
 };

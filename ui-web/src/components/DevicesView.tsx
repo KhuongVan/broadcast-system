@@ -2,7 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { adminApi } from '../lib/api';
 import { formatDateTime, formatStatus } from '../lib/format';
-import type { Device, DeviceInput, Schedule } from '../lib/types';
+import type { Device, DeviceInput, DeviceRecordingSession, DeviceRecordingStatus, Schedule } from '../lib/types';
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
@@ -33,6 +33,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   const [editingId, setEditingId] = useState('');
   const [selectedScheduleId, setSelectedScheduleId] = useState('');
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
+  const [recordingsByDevice, setRecordingsByDevice] = useState<Record<string, DeviceRecordingSession[]>>({});
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -66,6 +67,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       const [deviceData, scheduleData] = await Promise.all([adminApi.listDevices(), adminApi.listSchedules()]);
       setDevices(deviceData.devices);
       setSchedules(scheduleData.schedules);
+      await loadRecordings(deviceData.devices);
       setSelectedDeviceIds((current) => new Set([...current].filter((deviceId) => deviceData.devices.some((device) => device.deviceId === deviceId))));
       if (!selectedScheduleId) {
         setSelectedScheduleId(scheduleData.schedules[0]?.scheduleId || '');
@@ -75,6 +77,21 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadRecordings(deviceList = devices) {
+    if (!deviceList.length) {
+      setRecordingsByDevice({});
+      return;
+    }
+
+    const entries = await Promise.all(
+      deviceList.map(async (device) => {
+        const { recordings } = await adminApi.listDeviceRecordings(device.deviceId);
+        return [device.deviceId, recordings] as const;
+      }),
+    );
+    setRecordingsByDevice(Object.fromEntries(entries));
   }
 
   function update<K extends keyof DeviceInput>(key: K, value: DeviceInput[K]) {
@@ -197,6 +214,38 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
     }
   }
 
+  async function startDeviceRecording(deviceId: string) {
+    setSaving(true);
+    setError('');
+    try {
+      const { recording } = await adminApi.startDeviceRecording(deviceId);
+      setRecordingsByDevice((current) => ({
+        ...current,
+        [deviceId]: [recording, ...(current[deviceId] || []).filter((item) => item.recordingId !== recording.recordingId)],
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không bắt đầu ghi âm thiết bị được.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function stopDeviceRecording(deviceId: string, recordingId: string) {
+    setSaving(true);
+    setError('');
+    try {
+      const { recording } = await adminApi.stopDeviceRecording(deviceId, recordingId);
+      setRecordingsByDevice((current) => ({
+        ...current,
+        [deviceId]: [recording, ...(current[deviceId] || []).filter((item) => item.recordingId !== recording.recordingId)],
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không dừng ghi âm thiết bị được.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function exportDevicesCsv() {
     const rows = [
       ['Tên thiết bị', 'MAC', 'Số SIM', 'Khu vực', 'Dạng kết nối', 'Trạng thái online', 'Trạng thái phát', 'Lịch đã tải', 'Đồng bộ'],
@@ -246,6 +295,17 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    const hasActiveRecording = Object.values(recordingsByDevice).some((recordings) => recordings.some(isActiveRecording));
+    if (activeSection !== 'operate' || !hasActiveRecording) return undefined;
+
+    const interval = window.setInterval(() => {
+      void loadRecordings(filteredDevices);
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [activeSection, filteredDevices, recordingsByDevice]);
 
   return (
     <Panel title="Quản lý thiết bị" description="Vận hành, cấu hình và theo dõi trạng thái thiết bị phát thanh.">
@@ -321,6 +381,7 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                           <th>Thông tin thiết bị</th>
                           <th>Trạng thái phát</th>
                           <th>Âm lượng</th>
+                          <th>Ghi âm</th>
                           <th>Kết nối</th>
                           <th>Lịch đã tải</th>
                         </tr>
@@ -339,6 +400,14 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
                             </td>
                             <td>
                               <VolumeControl device={device} disabled={saving} onChange={(volumeLevel) => void updateDeviceVolume(device.deviceId, volumeLevel)} />
+                            </td>
+                            <td>
+                              <RecordingControl
+                                disabled={saving}
+                                recordings={recordingsByDevice[device.deviceId] || []}
+                                onStart={() => void startDeviceRecording(device.deviceId)}
+                                onStop={(recordingId) => void stopDeviceRecording(device.deviceId, recordingId)}
+                              />
                             </td>
                             <td>
                               <StatusBadge tone={device.online ? 'ok' : 'danger'}>{device.online ? 'Kết nối' : 'Mất kết nối'}</StatusBadge>
@@ -709,6 +778,73 @@ function getVolumeSyncTone(status: Device['volumeSyncStatus']) {
   if (status === 'SYNCED') return 'ok';
   if (status === 'FAILED') return 'danger';
   if (status === 'PENDING') return 'warn';
+  return 'neutral';
+}
+
+function RecordingControl({
+  disabled,
+  recordings,
+  onStart,
+  onStop,
+}: {
+  disabled: boolean;
+  recordings: DeviceRecordingSession[];
+  onStart: () => void;
+  onStop: (recordingId: string) => void;
+}) {
+  const activeRecording = recordings.find(isActiveRecording);
+  const latestRecording = recordings[0] || null;
+  const playableRecording = recordings.find((recording) => recording.status === 'COMPLETED' && recording.audioUrl);
+  const status = activeRecording?.status || latestRecording?.status || null;
+
+  return (
+    <div className="recording-control">
+      <div className="row-actions">
+        <button className="primary compact" disabled={disabled || Boolean(activeRecording)} onClick={onStart} type="button">
+          Bắt đầu ghi
+        </button>
+        {activeRecording ? (
+          <button className="danger compact" disabled={disabled || activeRecording.status === 'UPLOADING'} onClick={() => onStop(activeRecording.recordingId)} type="button">
+            Dừng ghi
+          </button>
+        ) : null}
+      </div>
+      <StatusBadge tone={getRecordingStatusTone(status)}>{getRecordingStatusLabel(status)}</StatusBadge>
+      {latestRecording?.message ? <div className="subtext">{latestRecording.message}</div> : null}
+      {playableRecording?.audioUrl ? (
+        <audio className="recording-audio" controls src={playableRecording.audioUrl}>
+          Trình duyệt không hỗ trợ nghe file ghi âm.
+        </audio>
+      ) : null}
+      {playableRecording ? (
+        <div className="subtext">
+          {formatDateTime(playableRecording.uploadedAt || playableRecording.updatedAt)}
+          {playableRecording.durationSeconds !== null ? ` · ${playableRecording.durationSeconds}s` : ''}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function isActiveRecording(recording: DeviceRecordingSession) {
+  return ['REQUESTED', 'RECORDING', 'STOP_REQUESTED', 'UPLOADING'].includes(recording.status);
+}
+
+function getRecordingStatusLabel(status: DeviceRecordingStatus | null) {
+  if (status === 'REQUESTED') return 'Chờ thiết bị';
+  if (status === 'RECORDING') return 'Đang ghi';
+  if (status === 'STOP_REQUESTED') return 'Đang dừng';
+  if (status === 'UPLOADING') return 'Đang upload';
+  if (status === 'COMPLETED') return 'Đã có file';
+  if (status === 'FAILED') return 'Lỗi';
+  if (status === 'EXPIRED') return 'Hết hạn';
+  return 'Chưa ghi';
+}
+
+function getRecordingStatusTone(status: DeviceRecordingStatus | null) {
+  if (status === 'COMPLETED') return 'ok';
+  if (status === 'FAILED' || status === 'EXPIRED') return 'danger';
+  if (status === 'REQUESTED' || status === 'RECORDING' || status === 'STOP_REQUESTED' || status === 'UPLOADING') return 'warn';
   return 'neutral';
 }
 

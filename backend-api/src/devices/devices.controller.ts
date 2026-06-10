@@ -43,6 +43,21 @@ export class DevicesController {
     return { device: await this.devices.updateVolume(deviceId, body.volumeLevel) };
   }
 
+  @Get('/api/devices/:deviceId/recordings')
+  async listRecordings(@Param('deviceId') deviceId: string) {
+    return { recordings: await this.devices.listRecordings(deviceId) };
+  }
+
+  @Post('/api/devices/:deviceId/recordings/start')
+  async startRecording(@Param('deviceId') deviceId: string) {
+    return { recording: await this.devices.startRecording(deviceId) };
+  }
+
+  @Post('/api/devices/:deviceId/recordings/:recordingId/stop')
+  async stopRecording(@Param('deviceId') deviceId: string, @Param('recordingId') recordingId: string) {
+    return { recording: await this.devices.stopRecording(deviceId, recordingId) };
+  }
+
   @Post('/api/devices/:deviceId/play-now')
   async playNow(@Param('deviceId') deviceId: string, @Body() body: { scheduleId?: string }) {
     return { device: await this.devices.playNow(deviceId, body.scheduleId || '') };
