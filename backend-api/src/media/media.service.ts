@@ -23,11 +23,13 @@ export type MediaStreamState = {
   fileId?: string;
   startedAt: number;
   hlsReady: boolean;
+  stderrTail: string;
 };
 
 @Injectable()
 export class MediaService {
   private activeStream: MediaStreamState | null = null;
+  private lastStoppedStreamStderrTail = '';
   private streamVersion = 0;
   private filePlaybackPositions = new Map<string, number>();
 
@@ -192,8 +194,9 @@ export class MediaService {
   }
 
   private streamInputArgs(url: string, timeoutMs = 8000) {
+    const timeoutMicros = `${timeoutMs * 1000}`;
     if (url.toLowerCase().startsWith('rtsp://')) {
-      return ['-rtsp_transport', 'tcp', '-stimeout', `${timeoutMs * 1000}`];
+      return ['-rtsp_transport', 'tcp', '-timeout', timeoutMicros, '-rw_timeout', timeoutMicros];
     }
 
     return [
@@ -206,7 +209,7 @@ export class MediaService {
       '-reconnect_delay_max',
       String(config.ffmpegReconnectDelayMaxSeconds),
       '-rw_timeout',
-      `${timeoutMs * 1000}`,
+      timeoutMicros,
     ];
   }
 
@@ -253,16 +256,22 @@ export class MediaService {
       fileId,
       startedAt: Date.now() - offsetSeconds * 1000,
       hlsReady: false,
+      stderrTail: '',
     };
 
     process.stderr.on('data', (chunk: Buffer) => {
-      console.log(`FFmpeg: ${chunk.toString()}`);
+      const output = chunk.toString();
+      console.log(`FFmpeg: ${output}`);
+      if (this.activeStream?.process === process) {
+        this.activeStream.stderrTail = this.keepTail(`${this.activeStream.stderrTail}${output}`, 5000);
+      }
     });
 
     process.on('error', (error) => {
       console.error(`Khong the chay FFmpeg: ${error.message}`);
       if (this.activeStream?.process === process) {
         const stream = this.activeStream;
+        this.lastStoppedStreamStderrTail = stream.stderrTail;
         this.activeStream = null;
         onStop({ type: stream.type, version: stream.version, code: null, signal: null });
       }
@@ -275,6 +284,7 @@ export class MediaService {
         if (stream.type === 'FILE' && code === 0 && !signal && stream.fileId) {
           this.filePlaybackPositions.set(stream.fileId, 0);
         }
+        this.lastStoppedStreamStderrTail = stream.stderrTail;
         this.activeStream = null;
         onStop({ type: stream.type, version: stream.version, code, signal });
       }
@@ -339,7 +349,7 @@ export class MediaService {
 
     while (Date.now() < deadline) {
       if (!this.activeStream || this.activeStream.version !== version) {
-        throw new Error('Luong phat da bi dung truoc khi HLS san sang.');
+        throw new Error(`Luong phat da bi dung truoc khi HLS san sang.${this.formatStderrTailForError()}`);
       }
 
       if (await this.isHlsManifestReady()) {
@@ -351,7 +361,7 @@ export class MediaService {
     }
 
     this.stop('hls_not_ready');
-    throw new Error('MediaMTX chưa tạo được HLS stream.');
+    throw new Error(`MediaMTX chưa tạo được HLS stream.${this.formatStderrTailForError()}`);
   }
 
   private async isHlsManifestReady() {
@@ -376,5 +386,16 @@ export class MediaService {
 
   private sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private keepTail(value: string, maxLength: number) {
+    if (value.length <= maxLength) return value;
+    return value.slice(value.length - maxLength);
+  }
+
+  private formatStderrTailForError() {
+    const tail = this.lastStoppedStreamStderrTail.trim();
+    if (!tail) return '';
+    return ` FFmpeg gan nhat: ${tail.split('\n').slice(-8).join(' | ')}`;
   }
 }

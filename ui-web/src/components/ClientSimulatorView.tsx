@@ -457,7 +457,7 @@ export function ClientSimulatorView() {
 
   function getStreamUrl(version: string | number | null) {
     const cacheVersion = encodeURIComponent(String(version || Date.now()));
-    return `/hls/${STREAM_PATH}/index.m3u8?v=${cacheVersion}`;
+    return `/hls/${STREAM_PATH}/index.m3u8?cookieCheck=1&v=${cacheVersion}`;
   }
 
   function resolveHlsUrl(hlsUrl: string | undefined, version: string | number | null) {
@@ -470,6 +470,7 @@ export function ClientSimulatorView() {
       const isInternalHost = ['localhost', '127.0.0.1', '0.0.0.0', 'mediamtx'].includes(url.hostname);
       if (isInternalHost && url.origin !== window.location.origin) return fallback;
       if (!url.pathname.includes('/index.m3u8')) return fallback;
+      url.searchParams.set('cookieCheck', '1');
       return url.pathname.startsWith('/hls/') ? `${url.pathname}${url.search}` : url.toString();
     } catch {
       return fallback;
