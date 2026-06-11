@@ -55,6 +55,17 @@ type ActivePlaylistSession = {
   singleFileId?: string;
 };
 
+type EmergencyPlaybackPayload = {
+  sessionId: string;
+  streamVersion: number;
+  durationMinutes: number;
+  sourceName: string;
+};
+
+type ActiveEmergencySession = EmergencyPlaybackPayload & {
+  targetDeviceIds: string[];
+};
+
 @WebSocketGateway({
   maxHttpBufferSize: 2 * 1024 * 1024,
 })
@@ -71,6 +82,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private scheduleStreamRestartTimer: ReturnType<typeof setTimeout> | null = null;
   private scheduleStreamRestartAttempts = 0;
   private activeLiveTarget: ActiveLiveTarget | null = null;
+  private activeEmergency: ActiveEmergencySession | null = null;
 
   constructor(
     private readonly auth: AuthService,
@@ -113,7 +125,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
 
     const active = this.media.getActiveStream();
-    if (active?.hlsReady && active.type !== 'MIC') {
+    if (active?.hlsReady && active.type !== 'MIC' && !this.activeEmergency) {
       client.emit('client_update', {
         action: 'START',
         streamVersion: active.version,
@@ -202,49 +214,61 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
   @SubscribeMessage('client_register_device')
   async handleClientRegisterDevice(@MessageBody() payload: ClientRegisterDevicePayload, @ConnectedSocket() client: Socket) {
-    const deviceId = String(payload?.deviceId || '').trim();
-    if (!deviceId) {
+    try {
+      const deviceId = String(payload?.deviceId || '').trim();
+      if (!deviceId) {
+        client.emit('client_registration_status', {
+          status: 'DEMO_GLOBAL',
+          message: 'Đang chạy chế độ demo global. Thêm ?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.',
+        });
+        return;
+      }
+
+      // Thử tìm theo UUID trước, sau đó fallback sang MAC address / Android ID.
+      let device = await this.storage.getDevice(deviceId);
+      if (!device) {
+        device = await this.storage.findDeviceForClientRegistration({
+          macAddress: deviceId,
+          androidId: deviceId,
+        });
+      }
+
+      if (!device) {
+        client.emit('client_registration_status', {
+          status: 'ERROR',
+          message: 'Không tìm thấy thiết bị. Kiểm tra lại UUID hoặc MAC address.',
+          deviceId,
+        });
+        return;
+      }
+
+      await client.join(this.deviceRoom(device.deviceId));
+      await client.join(this.areaRoom(device.area));
       client.emit('client_registration_status', {
-        status: 'DEMO_GLOBAL',
-        message: 'Đang chạy chế độ demo global. Thêm ?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.',
+        status: 'REGISTERED',
+        device: {
+          deviceId: device.deviceId,
+          name: device.name,
+          area: device.area,
+        },
       });
-      return;
-    }
 
-    // Thử tìm theo UUID trước, sau đó fallback sang MAC address / Android ID
-    let device = await this.storage.getDevice(deviceId);
-    if (!device) {
-      device = await this.storage.findDeviceForClientRegistration({
-        macAddress: deviceId,
-        androidId: deviceId,
-      });
-    }
+      this.emitActiveEmergencyToSocket(client, device.deviceId);
 
-    if (!device) {
+      const active = this.media.getActiveStream();
+      if (active?.hlsReady && active.type === 'MIC' && this.socketMatchesLiveTarget(device.deviceId, device.area)) {
+        client.emit('client_update', {
+          action: 'START',
+          streamVersion: active.version,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không đăng ký được thiết bị mô phỏng.';
+      console.error(`Client registration error: ${message}`);
       client.emit('client_registration_status', {
         status: 'ERROR',
-        message: 'Không tìm thấy thiết bị. Kiểm tra lại UUID hoặc MAC address.',
-        deviceId,
-      });
-      return;
-    }
-
-    await client.join(this.deviceRoom(device.deviceId));
-    await client.join(this.areaRoom(device.area));
-    client.emit('client_registration_status', {
-      status: 'REGISTERED',
-      device: {
-        deviceId: device.deviceId,
-        name: device.name,
-        area: device.area,
-      },
-    });
-
-    const active = this.media.getActiveStream();
-    if (active?.hlsReady && active.type === 'MIC' && this.socketMatchesLiveTarget(device.deviceId, device.area)) {
-      client.emit('client_update', {
-        action: 'START',
-        streamVersion: active.version,
+        message,
+        deviceId: String(payload?.deviceId || '').trim(),
       });
     }
   }
@@ -639,6 +663,16 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
   }
 
+  prepareForEmergencyPlayback() {
+    this.pauseActivePlaylist();
+    this.clearScheduleStreamRestart();
+    this.clearActiveSchedule();
+    this.activeLiveTarget = null;
+    this.server.emit('STOP');
+    this.server.emit('client_update', { action: 'STOP' });
+    this.emitScheduleStatus();
+  }
+
   private socketMatchesLiveTarget(deviceId: string, area: string) {
     const target = this.activeLiveTarget;
     if (!target) return false;
@@ -658,8 +692,28 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     return String(value || '').trim().toLowerCase();
   }
 
+  setActiveEmergency(deviceIds: string[], payload: EmergencyPlaybackPayload) {
+    this.activeEmergency = {
+      ...payload,
+      targetDeviceIds: deviceIds,
+    };
+  }
+
+  clearActiveEmergency(sessionId?: string) {
+    if (sessionId && this.activeEmergency?.sessionId !== sessionId) return;
+    this.activeEmergency = null;
+  }
+
+  hasActiveEmergency() {
+    return Boolean(this.activeEmergency);
+  }
+
+  isActiveEmergencySession(sessionId: string) {
+    return this.activeEmergency?.sessionId === sessionId;
+  }
+
   /** Gửi lệnh phát khẩn cấp đến các browser client đang mô phỏng thiết bị */
-  emitEmergencyToDevices(deviceIds: string[], payload: { url: string; durationMinutes: number; sessionId: string }) {
+  emitEmergencyToDevices(deviceIds: string[], payload: EmergencyPlaybackPayload) {
     for (const deviceId of deviceIds) {
       this.server.to(this.deviceRoom(deviceId)).emit('PLAY_EMERGENCY', payload);
     }
@@ -670,5 +724,17 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     for (const deviceId of deviceIds) {
       this.server.to(this.deviceRoom(deviceId)).emit('STOP_EMERGENCY');
     }
+  }
+
+  private emitActiveEmergencyToSocket(client: Socket, deviceId: string) {
+    const emergency = this.activeEmergency;
+    if (!emergency || !emergency.targetDeviceIds.includes(deviceId)) return;
+
+    client.emit('PLAY_EMERGENCY', {
+      sessionId: emergency.sessionId,
+      streamVersion: emergency.streamVersion,
+      durationMinutes: emergency.durationMinutes,
+      sourceName: emergency.sourceName,
+    });
   }
 }

@@ -1738,6 +1738,8 @@ export class PagesController {
     const deviceInfoEl = document.getElementById('deviceInfo');
     const params = new URLSearchParams(window.location.search);
     const simulatedDeviceId = (params.get('deviceId') || '').trim();
+    let registrationTimer = null;
+    let registrationAnswered = false;
     const DB_NAME = 'broadcast-cache';
     const STORE_NAME = 'audio-files';
     let dbPromise = null;
@@ -1761,6 +1763,27 @@ export class PagesController {
 
     function setDeviceInfo(message) {
       deviceInfoEl.innerText = message;
+    }
+
+    function clearRegistrationTimer() {
+      if (registrationTimer) clearTimeout(registrationTimer);
+      registrationTimer = null;
+    }
+
+    function registerSimulatedDevice() {
+      registrationAnswered = false;
+      clearRegistrationTimer();
+      if (simulatedDeviceId) {
+        setDeviceInfo('Socket đã kết nối. Đang đăng ký thiết bị mô phỏng: ' + simulatedDeviceId);
+      } else {
+        setDeviceInfo('Socket đã kết nối. Chế độ demo global. Mở /client?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.');
+      }
+
+      socket.emit('client_register_device', { deviceId: simulatedDeviceId });
+      registrationTimer = setTimeout(() => {
+        if (registrationAnswered) return;
+        setDeviceInfo('Không nhận được phản hồi đăng ký thiết bị. Kiểm tra WebSocket/proxy hoặc backend.');
+      }, 5000);
     }
 
     function loadStoredPositions() {
@@ -1978,12 +2001,13 @@ export class PagesController {
       return baseUrl.replace(/\\/+$/, '') + '/${config.streamPath}/index.m3u8?v=' + cacheVersion;
     }
 
-    function startHlsPlayer(version) {
+    function startHlsPlayer(version, label) {
+      const streamLabel = label || 'Phát trực tiếp';
       cleanupLocalAudio();
       cleanupHls();
       currentStreamVersion = version || Date.now();
       setStatus('ĐANG KẾT NỐI LOA...');
-      setCurrentFileName('Phát trực tiếp');
+      setCurrentFileName(streamLabel);
 
       if (!Hls.isSupported()) {
         setStatus('TRÌNH DUYỆT KHÔNG HỖ TRỢ HLS.JS');
@@ -1996,7 +2020,7 @@ export class PagesController {
 
       const startVersion = currentStreamVersion;
       connectTimer = setTimeout(() => {
-        if (startVersion === currentStreamVersion) startHlsPlayer(startVersion);
+        if (startVersion === currentStreamVersion) startHlsPlayer(startVersion, streamLabel);
       }, 5000);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -2005,12 +2029,12 @@ export class PagesController {
           .then(() => {
             btn.style.display = 'none';
             setStatus('ĐANG PHÁT THANH...');
-            setCurrentFileName('Phát trực tiếp');
+            setCurrentFileName(streamLabel);
           })
           .catch(() => {
             btn.style.display = 'inline-block';
             setStatus('NHẤN ĐỂ KẾT NỐI LOA');
-            setCurrentFileName('Phát trực tiếp');
+            setCurrentFileName(streamLabel);
           });
       });
 
@@ -2019,7 +2043,7 @@ export class PagesController {
         const retryVersion = currentStreamVersion;
         cleanupHls();
         retryTimer = setTimeout(() => {
-          if (retryVersion === currentStreamVersion) startHlsPlayer(retryVersion);
+          if (retryVersion === currentStreamVersion) startHlsPlayer(retryVersion, streamLabel);
         }, 1000);
       });
     }
@@ -2027,10 +2051,22 @@ export class PagesController {
     btn.addEventListener('click', () => audio.play().catch(() => null));
 
     socket.on('connect', () => {
-      socket.emit('client_register_device', { deviceId: simulatedDeviceId });
+      registerSimulatedDevice();
+    });
+
+    socket.on('connect_error', () => {
+      clearRegistrationTimer();
+      setDeviceInfo('Không kết nối được WebSocket. Kiểm tra reverse proxy /socket.io hoặc backend.');
+    });
+
+    socket.on('disconnect', () => {
+      clearRegistrationTimer();
+      setDeviceInfo('Socket mất kết nối. Đang chờ kết nối lại...');
     });
 
     socket.on('client_registration_status', (payload) => {
+      registrationAnswered = true;
+      clearRegistrationTimer();
       if (payload.status === 'REGISTERED' && payload.device) {
         setDeviceInfo('Thiết bị mô phỏng: ' + payload.device.name + ' | Địa bàn: ' + payload.device.area + ' | ID: ' + payload.device.deviceId);
         return;
@@ -2063,47 +2099,17 @@ export class PagesController {
     });
 
     // ── Phát khẩn cấp ──────────────────────────────────────────────────────
-    let emergencyHls = null;
     let emergencyTimer = null;
 
-    function startEmergencyPlayer(url, durationMinutes, sessionId) {
+    function startEmergencyPlayer(streamVersion, durationMinutes, sourceName) {
       stopEmergencyPlayer();
       setStatus('🚨 PHÁT KHẨN CẤP...');
-      setCurrentFileName('Khẩn cấp: ' + url);
+      startHlsPlayer(streamVersion, 'Phát khẩn cấp: ' + (sourceName || 'Nguồn khẩn cấp'));
 
-      if (url.endsWith('.m3u8') || url.includes('.m3u8?')) {
-        // HLS stream
-        if (Hls.isSupported()) {
-          emergencyHls = new Hls({ lowLatencyMode: true, backBufferLength: 0 });
-          emergencyHls.loadSource(url);
-          emergencyHls.attachMedia(audio);
-          emergencyHls.on(Hls.Events.MANIFEST_PARSED, () => {
-            audio.play().catch(() => { btn.style.display = 'inline-block'; });
-          });
-          emergencyHls.on(Hls.Events.ERROR, (_, data) => {
-            if (data.fatal) stopEmergencyPlayer();
-          });
-        } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
-          audio.src = url;
-          audio.play().catch(() => null);
-        }
-      } else {
-        // HTTP direct audio stream
-        audio.src = url;
-        audio.play().catch(() => { btn.style.display = 'inline-block'; });
-      }
-
-      // Auto-stop sau khi hết thời lượng
+      // Client-side safety stop; server vẫn là nguồn quyết định kết thúc phiên.
       if (durationMinutes > 0) {
         emergencyTimer = setTimeout(() => {
           stopEmergencyPlayer();
-          if (sessionId) {
-            fetch('/api/device-client/emergency-finished', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Device-Token': window._deviceToken || '' },
-              body: JSON.stringify({ sessionId }),
-            }).catch(() => null);
-          }
         }, durationMinutes * 60 * 1000);
       }
     }
@@ -2111,17 +2117,12 @@ export class PagesController {
     function stopEmergencyPlayer() {
       if (emergencyTimer) clearTimeout(emergencyTimer);
       emergencyTimer = null;
-      if (emergencyHls) { emergencyHls.destroy(); emergencyHls = null; }
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
-      setStatus('CHỜ PHÁT THANH...');
-      setCurrentFileName('');
+      stopPlayback();
     }
 
     socket.on('PLAY_EMERGENCY', (data) => {
-      // data: { url, durationMinutes, sessionId }
-      startEmergencyPlayer(data.url || '', data.durationMinutes || 0, data.sessionId || '');
+      // data: { streamVersion, durationMinutes, sessionId, sourceName }
+      startEmergencyPlayer(data.streamVersion, data.durationMinutes || 0, data.sourceName || '');
     });
 
     socket.on('STOP_EMERGENCY', () => {
@@ -2134,7 +2135,7 @@ export class PagesController {
       setStatus('CHỜ PHÁT THANH...');
       setCurrentFileName('');
       if (simulatedDeviceId) {
-        setDeviceInfo('Đang đăng ký thiết bị mô phỏng: ' + simulatedDeviceId);
+        setDeviceInfo(socket.connected ? 'Đang đăng ký thiết bị mô phỏng: ' + simulatedDeviceId : 'Đang kết nối WebSocket để đăng ký thiết bị: ' + simulatedDeviceId);
       } else {
         setDeviceInfo('Chế độ demo global. Mở /client?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.');
       }

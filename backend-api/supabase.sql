@@ -278,7 +278,7 @@ on devices(deleted_at);
 create table if not exists device_commands (
   command_id uuid primary key default gen_random_uuid(),
   device_id uuid not null references devices(device_id) on delete cascade,
-  type text not null check (type in ('SET_VOLUME', 'START_RECORDING', 'STOP_RECORDING')),
+  type text not null check (type in ('SET_VOLUME', 'START_RECORDING', 'STOP_RECORDING', 'PLAY_EMERGENCY', 'STOP_EMERGENCY')),
   payload jsonb not null default '{}'::jsonb,
   status text not null default 'PENDING' check (status in ('PENDING', 'DELIVERED', 'SUCCEEDED', 'FAILED', 'SUPERSEDED')),
   message text,
@@ -299,7 +299,7 @@ begin
     where conname = 'device_commands_type_check'
   ) then
     alter table device_commands
-    add constraint device_commands_type_check check (type in ('SET_VOLUME', 'START_RECORDING', 'STOP_RECORDING'));
+    add constraint device_commands_type_check check (type in ('SET_VOLUME', 'START_RECORDING', 'STOP_RECORDING', 'PLAY_EMERGENCY', 'STOP_EMERGENCY'));
   end if;
 end $$;
 

@@ -1378,6 +1378,26 @@ export class StorageService {
       return device;
     }
 
+    if (command.type !== 'SET_VOLUME') {
+      const { error: commandUpdateError } = await this.supabase
+        .from('device_commands')
+        .update({
+          status: result.status,
+          message: result.message,
+          completed_at: now,
+          updated_at: now,
+        })
+        .eq('command_id', commandId);
+
+      if (commandUpdateError) {
+        throw new Error(`Khong cap nhat duoc ket qua lenh thiet bi: ${commandUpdateError.message}`);
+      }
+
+      const device = await this.getDevice(deviceId);
+      if (!device) throw new Error('Khong tim thay thiet bi.');
+      return device;
+    }
+
     const requestedVolumeLevel = this.getCommandVolumeLevel(command);
     const synced = result.status === 'SUCCEEDED' && result.appliedVolumeLevel === requestedVolumeLevel;
 

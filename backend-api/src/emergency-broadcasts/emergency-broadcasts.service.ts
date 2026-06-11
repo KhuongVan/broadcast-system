@@ -1,13 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { BroadcastGateway } from '../broadcast/broadcast.gateway';
+import { config } from '../config';
+import { MediaService } from '../media/media.service';
 import { StorageService } from '../storage/storage.service';
 import { EmergencyBroadcastStartInput } from './emergency-broadcast.types';
 
 @Injectable()
 export class EmergencyBroadcastsService {
+  private finishTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
     private readonly storage: StorageService,
     private readonly gateway: BroadcastGateway,
+    private readonly media: MediaService,
   ) {}
 
   listSessions() {
@@ -28,6 +33,9 @@ export class EmergencyBroadcastsService {
 
     const source = await this.storage.getEmergencySource(sourceId);
     if (!source) throw new NotFoundException('Không tìm thấy nguồn phát.');
+    if (this.gateway.hasActiveEmergency()) {
+      throw new BadRequestException('Đang có phiên phát khẩn cấp khác đang hoạt động. Vui lòng dừng phiên đó trước.');
+    }
 
     // Check conflict: any device already has ACTIVE session
     const conflicts = await this.storage.getActiveEmergencySessionsByDeviceIds(deviceIds);
@@ -49,19 +57,38 @@ export class EmergencyBroadcastsService {
       startedBy: input.startedBy || 'Admin',
     });
 
-    // Write PLAY_EMERGENCY command for each device (for Android polling)
-    await this.storage.createEmergencyCommandsForDevices(deviceIds, 'PLAY_EMERGENCY', {
-      url: source.url,
-      durationMinutes,
-      sessionId: session.sessionId,
-    });
+    try {
+      this.gateway.prepareForEmergencyPlayback();
+      const stream = await this.media.startRtspUrl(source.url, (info) => {
+        this.handleEmergencyStreamStopped(session.sessionId, info.version).catch((error) =>
+          console.error(`Emergency stream stop error: ${error.message}`),
+        );
+      });
 
-    // Emit real-time socket event cho browser /client simulator
-    this.gateway.emitEmergencyToDevices(deviceIds, {
-      url: source.url,
-      durationMinutes,
-      sessionId: session.sessionId,
-    });
+      const payload = {
+        sessionId: session.sessionId,
+        streamVersion: stream.version,
+        durationMinutes,
+        sourceName: source.name,
+      };
+      this.gateway.setActiveEmergency(deviceIds, payload);
+
+      // Write PLAY_EMERGENCY command for each device (for Android polling)
+      await this.storage.createEmergencyCommandsForDevices(deviceIds, 'PLAY_EMERGENCY', {
+        ...payload,
+        hlsUrl: this.getPublicHlsUrl(stream.version),
+      });
+
+      // Emit real-time socket event cho browser /client simulator
+      this.gateway.emitEmergencyToDevices(deviceIds, payload);
+      this.scheduleAutoFinish(session.sessionId, deviceIds, durationMinutes);
+    } catch (error) {
+      await this.storage.finishEmergencyBroadcastSession(session.sessionId, 'CANCELLED').catch(() => null);
+      this.media.stop('emergency_start_failed');
+      this.gateway.stopEmergencyOnDevices(deviceIds);
+      this.gateway.clearActiveEmergency(session.sessionId);
+      throw error;
+    }
 
     return session;
   }
@@ -76,6 +103,12 @@ export class EmergencyBroadcastsService {
     const updated = await this.storage.finishEmergencyBroadcastSession(sessionId, 'CANCELLED');
     if (!updated) throw new NotFoundException('Không tìm thấy phiên phát khẩn cấp.');
 
+    this.clearAutoFinishTimer();
+    if (this.gateway.isActiveEmergencySession(sessionId)) {
+      this.media.stop('emergency_stop');
+      this.gateway.clearActiveEmergency(sessionId);
+    }
+
     // Write STOP_EMERGENCY command for each device (for Android polling)
     await this.storage.createEmergencyCommandsForDevices(session.targetDeviceIds, 'STOP_EMERGENCY', {
       sessionId,
@@ -85,5 +118,53 @@ export class EmergencyBroadcastsService {
     this.gateway.stopEmergencyOnDevices(session.targetDeviceIds);
 
     return updated;
+  }
+
+  private async handleEmergencyStreamStopped(sessionId: string, streamVersion: number) {
+    if (!this.gateway.isActiveEmergencySession(sessionId)) return;
+
+    console.log(`EMERGENCY_STREAM_STOPPED sessionId=${sessionId} streamVersion=${streamVersion}`);
+    this.clearAutoFinishTimer();
+    const session = await this.storage.finishEmergencyBroadcastSession(sessionId, 'FINISHED');
+    this.gateway.clearActiveEmergency(sessionId);
+    if (session) {
+      this.gateway.stopEmergencyOnDevices(session.targetDeviceIds);
+      await this.storage.createEmergencyCommandsForDevices(session.targetDeviceIds, 'STOP_EMERGENCY', {
+        sessionId,
+      });
+    }
+  }
+
+  private scheduleAutoFinish(sessionId: string, deviceIds: string[], durationMinutes: number) {
+    this.clearAutoFinishTimer();
+    this.finishTimer = setTimeout(() => {
+      this.finishTimer = null;
+      this.finishSession(sessionId, deviceIds).catch((error) =>
+        console.error(`Emergency auto-finish error: ${error.message}`),
+      );
+    }, durationMinutes * 60 * 1000);
+  }
+
+  private async finishSession(sessionId: string, deviceIds: string[]) {
+    if (!this.gateway.isActiveEmergencySession(sessionId)) return;
+
+    const updated = await this.storage.finishEmergencyBroadcastSession(sessionId, 'FINISHED');
+    this.media.stop('emergency_finished');
+    this.gateway.clearActiveEmergency(sessionId);
+    const targetDeviceIds = updated?.targetDeviceIds.length ? updated.targetDeviceIds : deviceIds;
+    this.gateway.stopEmergencyOnDevices(targetDeviceIds);
+    await this.storage.createEmergencyCommandsForDevices(targetDeviceIds, 'STOP_EMERGENCY', {
+      sessionId,
+    });
+  }
+
+  private clearAutoFinishTimer() {
+    if (this.finishTimer) clearTimeout(this.finishTimer);
+    this.finishTimer = null;
+  }
+
+  private getPublicHlsUrl(streamVersion: number) {
+    const baseUrl = config.publicHlsBaseUrl || `http://localhost:8888`;
+    return `${baseUrl.replace(/\/+$/, '')}/${config.streamPath}/index.m3u8?v=${encodeURIComponent(streamVersion)}`;
   }
 }
