@@ -70,13 +70,13 @@ export class EmergencyBroadcastsService {
         streamVersion: stream.version,
         durationMinutes,
         sourceName: source.name,
+        hlsUrl: this.getPublicHlsUrl(stream.version),
       };
       this.gateway.setActiveEmergency(deviceIds, payload);
 
       // Write PLAY_EMERGENCY command for each device (for Android polling)
       await this.storage.createEmergencyCommandsForDevices(deviceIds, 'PLAY_EMERGENCY', {
         ...payload,
-        hlsUrl: this.getPublicHlsUrl(stream.version),
       });
 
       // Emit real-time socket event cho browser /client simulator

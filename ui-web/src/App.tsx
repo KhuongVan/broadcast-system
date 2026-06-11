@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BroadcastView } from './components/BroadcastView';
+import { ClientSimulatorView } from './components/ClientSimulatorView';
 import { DevicesView } from './components/DevicesView';
 import { EmergencyView } from './components/EmergencyView';
 import { FilesView } from './components/FilesView';
@@ -14,6 +15,14 @@ import { adminApi } from './lib/api';
 import type { Session } from './lib/types';
 
 export function App() {
+  if (window.location.pathname === '/client') {
+    return <ClientSimulatorView />;
+  }
+
+  return <AdminApp />;
+}
+
+function AdminApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>('overview');
   const [loading, setLoading] = useState(true);

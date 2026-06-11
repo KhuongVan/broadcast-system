@@ -62,6 +62,7 @@ type EmergencyPlaybackPayload = {
   streamVersion: number;
   durationMinutes: number;
   sourceName: string;
+  hlsUrl?: string;
 };
 
 type ActiveEmergencySession = EmergencyPlaybackPayload & {
@@ -759,6 +760,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       streamVersion: emergency.streamVersion,
       durationMinutes: emergency.durationMinutes,
       sourceName: emergency.sourceName,
+      hlsUrl: emergency.hlsUrl,
     });
   }
 }
