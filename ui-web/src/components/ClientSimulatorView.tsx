@@ -310,6 +310,17 @@ export function ClientSimulatorView() {
     if (!audio) return;
 
     const streamUrl = resolveHlsUrl(hlsUrl, currentStreamVersionRef.current);
+    const manifestCheck = await checkHlsManifest(streamUrl);
+    if (!manifestCheck.ok) {
+      setStatus(`LỖI KẾT NỐI HLS: ${manifestCheck.message}`);
+      setCurrentName(label);
+      const retryVersion = currentStreamVersionRef.current;
+      retryTimerRef.current = window.setTimeout(() => {
+        if (retryVersion === currentStreamVersionRef.current) void startHlsPlayer(retryVersion || undefined, label, hlsUrl);
+      }, 1000);
+      return;
+    }
+
     const Hls = await loadHls();
     if (!Hls.isSupported()) {
       if (audio.canPlayType('application/vnd.apple.mpegurl')) {
@@ -324,13 +335,9 @@ export function ClientSimulatorView() {
     const hls = new Hls({
       lowLatencyMode: true,
       backBufferLength: 0,
-      xhrSetup: (xhr: XMLHttpRequest) => {
-        xhr.withCredentials = true;
-      },
       fetchSetup: (_context: unknown, initParams: RequestInit) => ({
         ...initParams,
         cache: 'no-store',
-        credentials: 'include',
       }),
     });
     hlsRef.current = hls;
@@ -466,6 +473,39 @@ export function ClientSimulatorView() {
       return url.pathname.startsWith('/hls/') ? `${url.pathname}${url.search}` : url.toString();
     } catch {
       return fallback;
+    }
+  }
+
+  async function checkHlsManifest(streamUrl: string) {
+    try {
+      const response = await fetch(streamUrl, {
+        cache: 'no-store',
+        headers: { Accept: 'application/vnd.apple.mpegurl, application/x-mpegURL, text/plain, */*' },
+      });
+      const body = await response.text();
+      const contentType = response.headers.get('content-type') || 'unknown';
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          message: `manifest HTTP ${response.status} (${streamUrl})`,
+        };
+      }
+
+      if (!body.includes('#EXTM3U')) {
+        const snippet = body.replace(/\s+/g, ' ').slice(0, 80) || 'empty body';
+        return {
+          ok: false,
+          message: `manifest không hợp lệ (${contentType}): ${snippet}`,
+        };
+      }
+
+      return { ok: true, message: 'OK' };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : 'không tải được manifest',
+      };
     }
   }
 
