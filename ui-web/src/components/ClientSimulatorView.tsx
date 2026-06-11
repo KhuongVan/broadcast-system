@@ -309,7 +309,7 @@ export function ClientSimulatorView() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const streamUrl = hlsUrl || getStreamUrl(currentStreamVersionRef.current);
+    const streamUrl = resolveHlsUrl(hlsUrl, currentStreamVersionRef.current);
     const Hls = await loadHls();
     if (!Hls.isSupported()) {
       if (audio.canPlayType('application/vnd.apple.mpegurl')) {
@@ -451,6 +451,22 @@ export function ClientSimulatorView() {
   function getStreamUrl(version: string | number | null) {
     const cacheVersion = encodeURIComponent(String(version || Date.now()));
     return `/hls/${STREAM_PATH}/index.m3u8?v=${cacheVersion}`;
+  }
+
+  function resolveHlsUrl(hlsUrl: string | undefined, version: string | number | null) {
+    const fallback = getStreamUrl(version);
+    const value = String(hlsUrl || '').trim();
+    if (!value) return fallback;
+
+    try {
+      const url = new URL(value, window.location.origin);
+      const isInternalHost = ['localhost', '127.0.0.1', '0.0.0.0', 'mediamtx'].includes(url.hostname);
+      if (isInternalHost && url.origin !== window.location.origin) return fallback;
+      if (!url.pathname.includes('/index.m3u8')) return fallback;
+      return url.pathname.startsWith('/hls/') ? `${url.pathname}${url.search}` : url.toString();
+    } catch {
+      return fallback;
+    }
   }
 
   function clearRegistrationTimer() {

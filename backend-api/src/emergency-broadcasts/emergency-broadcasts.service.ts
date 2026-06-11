@@ -164,7 +164,7 @@ export class EmergencyBroadcastsService {
   }
 
   private getPublicHlsUrl(streamVersion: number) {
-    const baseUrl = config.publicHlsBaseUrl || `http://localhost:8888`;
+    const baseUrl = config.publicHlsBaseUrl || '/hls';
     return `${baseUrl.replace(/\/+$/, '')}/${config.streamPath}/index.m3u8?v=${encodeURIComponent(streamVersion)}`;
   }
 }
