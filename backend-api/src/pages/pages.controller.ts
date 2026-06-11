@@ -1738,6 +1738,13 @@ export class PagesController {
     const deviceInfoEl = document.getElementById('deviceInfo');
     const params = new URLSearchParams(window.location.search);
     const simulatedDeviceId = (params.get('deviceId') || '').trim();
+    const simulatedMacAddress = (params.get('macAddress') || '').trim();
+    const simulatedAndroidId = (params.get('androidId') || '').trim();
+    const registrationPayload = {
+      deviceId: simulatedDeviceId,
+      macAddress: simulatedMacAddress,
+      androidId: simulatedAndroidId,
+    };
     let registrationTimer = null;
     let registrationAnswered = false;
     const DB_NAME = 'broadcast-cache';
@@ -1770,16 +1777,33 @@ export class PagesController {
       registrationTimer = null;
     }
 
+    function getRegistrationLabel() {
+      if (simulatedDeviceId && simulatedMacAddress) {
+        return 'Device ID: ' + simulatedDeviceId + ' | MAC fallback: ' + simulatedMacAddress;
+      }
+      if (simulatedDeviceId) {
+        return 'Device ID: ' + simulatedDeviceId;
+      }
+      if (simulatedMacAddress) {
+        return 'MAC: ' + simulatedMacAddress;
+      }
+      if (simulatedAndroidId) {
+        return 'Android ID: ' + simulatedAndroidId;
+      }
+      return '';
+    }
+
     function registerSimulatedDevice() {
       registrationAnswered = false;
       clearRegistrationTimer();
-      if (simulatedDeviceId) {
-        setDeviceInfo('Socket đã kết nối. Đang đăng ký thiết bị mô phỏng: ' + simulatedDeviceId);
+      const label = getRegistrationLabel();
+      if (label) {
+        setDeviceInfo('Socket đã kết nối. Đang đăng ký thiết bị mô phỏng bằng ' + label);
       } else {
-        setDeviceInfo('Socket đã kết nối. Chế độ demo global. Mở /client?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.');
+        setDeviceInfo('Socket đã kết nối. Chế độ demo global. Mở /client?deviceId=<uuid> hoặc /client?macAddress=<mac> để kiểm tra theo thiết bị.');
       }
 
-      socket.emit('client_register_device', { deviceId: simulatedDeviceId });
+      socket.emit('client_register_device', registrationPayload);
       registrationTimer = setTimeout(() => {
         if (registrationAnswered) return;
         setDeviceInfo('Không nhận được phản hồi đăng ký thiết bị. Kiểm tra WebSocket/proxy hoặc backend.');
@@ -2073,7 +2097,8 @@ export class PagesController {
       }
 
       if (payload.status === 'ERROR') {
-        setDeviceInfo((payload.message || 'Không đăng ký được thiết bị mô phỏng.') + ' ID: ' + (payload.deviceId || simulatedDeviceId || 'trống'));
+        const failedLabel = getRegistrationLabel() || payload.deviceId || payload.macAddress || payload.androidId || 'trống';
+        setDeviceInfo((payload.message || 'Không đăng ký được thiết bị mô phỏng.') + ' | Thông tin: ' + failedLabel);
         return;
       }
 
@@ -2134,10 +2159,11 @@ export class PagesController {
       loadStoredPositions();
       setStatus('CHỜ PHÁT THANH...');
       setCurrentFileName('');
-      if (simulatedDeviceId) {
-        setDeviceInfo(socket.connected ? 'Đang đăng ký thiết bị mô phỏng: ' + simulatedDeviceId : 'Đang kết nối WebSocket để đăng ký thiết bị: ' + simulatedDeviceId);
+      const label = getRegistrationLabel();
+      if (label) {
+        setDeviceInfo(socket.connected ? 'Đang đăng ký thiết bị mô phỏng bằng ' + label : 'Đang kết nối WebSocket để đăng ký thiết bị bằng ' + label);
       } else {
-        setDeviceInfo('Chế độ demo global. Mở /client?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.');
+        setDeviceInfo('Chế độ demo global. Mở /client?deviceId=<uuid> hoặc /client?macAddress=<mac> để kiểm tra theo thiết bị.');
       }
     });
   </script>

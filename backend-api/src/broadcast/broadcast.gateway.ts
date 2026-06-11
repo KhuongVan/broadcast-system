@@ -36,6 +36,8 @@ type LiveTargetPayload = {
 
 type ClientRegisterDevicePayload = {
   deviceId?: string;
+  macAddress?: string;
+  androidId?: string;
 };
 
 type ActiveLiveTarget = {
@@ -216,28 +218,36 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   async handleClientRegisterDevice(@MessageBody() payload: ClientRegisterDevicePayload, @ConnectedSocket() client: Socket) {
     try {
       const deviceId = String(payload?.deviceId || '').trim();
-      if (!deviceId) {
+      const macAddress = String(payload?.macAddress || '').trim();
+      const androidId = String(payload?.androidId || '').trim();
+      const legacyIdentifier = deviceId && !this.isUuid(deviceId) ? deviceId : '';
+
+      if (!deviceId && !macAddress && !androidId) {
         client.emit('client_registration_status', {
           status: 'DEMO_GLOBAL',
-          message: 'Đang chạy chế độ demo global. Thêm ?deviceId=<id> để kiểm tra phát theo thiết bị/địa bàn.',
+          message: 'Đang chạy chế độ demo global. Thêm ?deviceId=<uuid> hoặc ?macAddress=<mac> để kiểm tra theo thiết bị.',
         });
         return;
       }
 
       // Thử tìm theo UUID trước, sau đó fallback sang MAC address / Android ID.
-      let device = await this.storage.getDevice(deviceId);
+      // Không query cột UUID bằng MAC vì Postgres sẽ lỗi trước khi kịp fallback.
+      let device = this.isUuid(deviceId) ? await this.storage.getDevice(deviceId) : null;
       if (!device) {
         device = await this.storage.findDeviceForClientRegistration({
-          macAddress: deviceId,
-          androidId: deviceId,
+          macAddress: macAddress || legacyIdentifier,
+          androidId: androidId || legacyIdentifier,
         });
       }
 
       if (!device) {
+        const attempted = this.describeClientRegistrationAttempt(deviceId, macAddress, androidId);
         client.emit('client_registration_status', {
           status: 'ERROR',
-          message: 'Không tìm thấy thiết bị. Kiểm tra lại UUID hoặc MAC address.',
+          message: `Không tìm thấy thiết bị theo ${attempted}. Kiểm tra lại Device ID/MAC address.`,
           deviceId,
+          macAddress,
+          androidId,
         });
         return;
       }
@@ -269,6 +279,8 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
         status: 'ERROR',
         message,
         deviceId: String(payload?.deviceId || '').trim(),
+        macAddress: String(payload?.macAddress || '').trim(),
+        androidId: String(payload?.androidId || '').trim(),
       });
     }
   }
@@ -690,6 +702,18 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
   private normalizeRoomPart(value: string) {
     return String(value || '').trim().toLowerCase();
+  }
+
+  private isUuid(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  }
+
+  private describeClientRegistrationAttempt(deviceId: string, macAddress: string, androidId: string) {
+    const parts: string[] = [];
+    if (deviceId) parts.push(this.isUuid(deviceId) ? `Device ID ${deviceId}` : `legacy deviceId ${deviceId}`);
+    if (macAddress) parts.push(`MAC ${macAddress}`);
+    if (androidId) parts.push(`Android ID ${androidId}`);
+    return parts.length ? parts.join(' / ') : 'thông tin rỗng';
   }
 
   setActiveEmergency(deviceIds: string[], payload: EmergencyPlaybackPayload) {
