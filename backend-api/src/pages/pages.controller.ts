@@ -2038,8 +2038,20 @@ export class PagesController {
         return;
       }
 
-      hls = new Hls({ lowLatencyMode: true, backBufferLength: 0 });
-      hls.loadSource(getStreamUrl(currentStreamVersion));
+      const streamUrl = getStreamUrl(currentStreamVersion);
+      hls = new Hls({
+        lowLatencyMode: true,
+        backBufferLength: 0,
+        xhrSetup: (xhr) => {
+          xhr.withCredentials = true;
+        },
+        fetchSetup: (context, initParams) => ({
+          ...initParams,
+          cache: 'no-store',
+          credentials: 'include',
+        }),
+      });
+      hls.loadSource(streamUrl);
       hls.attachMedia(audio);
 
       const startVersion = currentStreamVersion;
@@ -2062,9 +2074,17 @@ export class PagesController {
           });
       });
 
+      hls.on(Hls.Events.MANIFEST_LOADED, () => {
+        setStatus('ĐÃ NHẬN DANH SÁCH PHÁT...');
+        setCurrentFileName(streamLabel);
+      });
+
       hls.on(Hls.Events.ERROR, (event, data) => {
         if (!data.fatal) return;
         const retryVersion = currentStreamVersion;
+        const detail = data.details || data.type || 'không rõ lỗi';
+        setStatus('LỖI KẾT NỐI HLS: ' + detail);
+        setCurrentFileName(streamLabel);
         cleanupHls();
         retryTimer = setTimeout(() => {
           if (retryVersion === currentStreamVersion) startHlsPlayer(retryVersion, streamLabel);
