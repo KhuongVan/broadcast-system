@@ -75,7 +75,7 @@ export class MediaService {
   }
 
   async startRtspUrl(rtspUrl: string, onStop: (info: MediaStopInfo) => void) {
-    return this.startStream('RTSP', [...this.streamInputArgs(rtspUrl), '-i', rtspUrl], onStop);
+    return this.startStream('RTSP', ['-re', ...this.streamInputArgs(rtspUrl), '-i', rtspUrl], onStop);
   }
 
   async testRtspUrl(rtspUrl: string, timeoutMs = 8000): Promise<StreamTestResult> {
@@ -241,6 +241,7 @@ export class MediaService {
         : [...inputArgs, ...this.outputArgs()];
 
     console.log(`STARTING version=${version} type=${type} -> ${config.rtspUrl}`);
+    console.log(`FFMPEG_ARGS version=${version} type=${type} ${this.formatFfmpegArgs(args)}`);
     const process = spawn(config.ffmpegPath, args, {
       stdio: ['pipe', 'ignore', 'pipe'],
     });
@@ -293,7 +294,11 @@ export class MediaService {
 
   private outputArgs() {
     return [
+      '-map',
+      '0:a:0?',
       '-vn',
+      '-dn',
+      '-sn',
       '-c:a',
       'aac',
       '-b:a',
@@ -304,6 +309,20 @@ export class MediaService {
       'tcp',
       config.rtspUrl,
     ];
+  }
+
+  private formatFfmpegArgs(args: string[]) {
+    return args.map((arg) => this.redactUrlQuery(arg)).join(' ');
+  }
+
+  private redactUrlQuery(value: string) {
+    try {
+      const url = new URL(value);
+      if (url.search) url.search = '?...';
+      return url.toString();
+    } catch {
+      return value;
+    }
   }
 
   private rememberFilePosition(stream: MediaStreamState) {
