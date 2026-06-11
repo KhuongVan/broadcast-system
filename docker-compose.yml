@@ -34,4 +34,6 @@ services:
     expose:
       - "8554"
       - "8888"
+    ports:
+      - "${HLS_BIND:-127.0.0.1}:${HLS_PORT:-8888}:8888"
     restart: unless-stopped

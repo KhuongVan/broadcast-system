@@ -13,6 +13,22 @@
 docker compose up -d --build
 ```
 
+Neu server dang dung Caddy o ngoai Docker va `WEB_PORT` khong phai 80, vi du web container expose ra `8080`, can route HLS truoc route SPA:
+
+```caddy
+demo.phatthanhnhanh.online {
+  handle_path /hls/* {
+    reverse_proxy 127.0.0.1:8888
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:8080
+  }
+}
+```
+
+`handle_path /hls/*` bat buoc vi MediaMTX nhan path dang `/loacuaxa/index.m3u8`, con browser goi `/hls/loacuaxa/index.m3u8`.
+
 7. Mo firewall:
 
 ```sh
@@ -49,7 +65,14 @@ Khi do duong dan se la:
 - Khi chay root compose production, dat `PUBLIC_HLS_BASE_URL=/hls` trong `backend-api/.env`.
 - Khi chay backend-only/debug va client loa can truy cap HLS truc tiep, dat `PUBLIC_HLS_BASE_URL=http://<SERVER_IP>:8888` trong `.env`.
 - Co the tang do on dinh cho tiep song URL bang `HLS_READY_TIMEOUT_MS`, `FFMPEG_RECONNECT_DELAY_MAX_SECONDS`, `SCHEDULE_STREAM_RESTART_MAX_ATTEMPTS`, va `SCHEDULE_STREAM_RESTART_DELAY_MS`.
+- Root compose map HLS MediaMTX ra `127.0.0.1:8888` de reverse proxy tren host nhu Caddy co the doc duoc, nhung khong public truc tiep ra internet.
 - Cong RTSP `8554` khong public mac dinh. Neu can debug RTSP tu ben ngoai, them mapping `8554:8554` vao service `mediamtx`.
 - Thu muc `uploads` duoc mount ra ngoai container de file MP3 khong mat khi rebuild.
 - MP3 duoc luu trong Supabase Storage private bucket; backend chi cap signed URL tam thoi cho client tai ve cache.
 - `ADMIN_PASSWORD` phai la mat khau rieng tren VPS, khong de gia tri mau `change-me`.
+
+Khi FFmpeg dang phat, lenh nay phai tra body bat dau bang `#EXTM3U`:
+
+```sh
+curl -i http://localhost/hls/loacuaxa/index.m3u8
+```

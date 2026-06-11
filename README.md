@@ -645,6 +645,22 @@ server {
 }
 ```
 
+Nếu dùng Caddy trên host và web container chạy ở `WEB_PORT=8080`, route `/hls` trực tiếp tới MediaMTX localhost trước route SPA:
+
+```caddy
+demo.phatthanhnhanh.online {
+    handle_path /hls/* {
+        reverse_proxy 127.0.0.1:8888
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:8080
+    }
+}
+```
+
+`handle_path` sẽ strip `/hls`, nên request public `/hls/loacuaxa/index.m3u8` được chuyển thành `/loacuaxa/index.m3u8` cho MediaMTX.
+
 ---
 
 ## Roadmap
