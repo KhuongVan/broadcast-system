@@ -68,6 +68,7 @@ export class EmergencyBroadcastsService {
     });
 
     try {
+      this.gateway.beginEmergencyStartup(session.sessionId);
       this.gateway.prepareForEmergencyPlayback();
       this.activeRuntime = {
         sessionId: session.sessionId,
@@ -155,6 +156,13 @@ export class EmergencyBroadcastsService {
     console.log(
       `EMERGENCY_STREAM_STOPPED sessionId=${sessionId} streamVersion=${streamVersion} code=${code} signal=${signal} attempt=${runtime?.retryAttempts || 0}`,
     );
+
+    if (this.gateway.isPendingEmergencySession(sessionId)) {
+      console.error(
+        `EMERGENCY_START_INTERRUPTED sessionId=${sessionId} streamVersion=${streamVersion} code=${code} signal=${signal}`,
+      );
+      return;
+    }
 
     if (runtime && runtime.sessionId === sessionId && this.shouldRetryEmergencyStream(runtime)) {
       this.scheduleEmergencyRetry(runtime, streamVersion);

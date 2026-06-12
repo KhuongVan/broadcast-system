@@ -88,6 +88,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private skippedScheduleIds = new Set<string>();
   private activeLiveTarget: ActiveLiveTarget | null = null;
   private activeEmergency: ActiveEmergencySession | null = null;
+  private pendingEmergencySessionId: string | null = null;
 
   constructor(
     private readonly auth: AuthService,
@@ -158,6 +159,11 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
   @SubscribeMessage('admin_play_cached')
   async handlePlayCached(@MessageBody() payload: PlayCachedPayload, @ConnectedSocket() client: Socket) {
+    if (this.hasActiveEmergency()) {
+      client.emit('admin_error', { message: 'Đang phát khẩn cấp, không thể phát nội dung khác.' });
+      return;
+    }
+
     const record = await this.audioFiles.getFile(payload.fileId);
     if (!record) {
       client.emit('admin_error', { message: 'Khong tim thay file cached.' });
@@ -176,6 +182,11 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
   @SubscribeMessage('admin_play_hls_file')
   async handlePlayHlsFile(@MessageBody() payload: PlayHlsFilePayload, @ConnectedSocket() client: Socket) {
+    if (this.hasActiveEmergency()) {
+      client.emit('admin_error', { message: 'Đang phát khẩn cấp, không thể phát nội dung khác.' });
+      return;
+    }
+
     try {
       client.emit('admin_status', { status: 'STARTING', type: 'FILE' });
       this.pauseActivePlaylist();
@@ -193,6 +204,11 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
   @SubscribeMessage('admin_play_live')
   async handlePlayLive(@MessageBody() payload: LiveTargetPayload, @ConnectedSocket() client: Socket) {
+    if (this.hasActiveEmergency()) {
+      client.emit('admin_error', { message: 'Đang phát khẩn cấp, không thể phát trực tiếp.' });
+      return;
+    }
+
     try {
       const target = this.normalizeLiveTarget(payload);
       client.emit('admin_status', { status: 'STARTING', type: 'MIC' });
@@ -462,6 +478,8 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   }
 
   private async tickSchedules() {
+    if (this.hasActiveEmergency()) return;
+
     const schedules = await this.schedules.listSchedules();
     const runnable = this.schedules.getRunnableSchedules(schedules);
     const candidates = this.sortSchedules(runnable);
@@ -504,6 +522,8 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   }
 
   private async startSchedule(schedule: BroadcastScheduleRecord, resetPosition = true, isRestart = false) {
+    if (this.hasActiveEmergency()) return false;
+
     if (!isRestart) {
       this.clearScheduleStreamRestart();
     }
@@ -546,9 +566,20 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
             console.error(`Schedule stream restart error: ${error.message}`),
           );
         });
+        if (this.hasActiveEmergency()) {
+          console.log(`SCHEDULE_START_ABORTED_BY_EMERGENCY id=${schedule.scheduleId} name=${schedule.name}`);
+          this.abortScheduleStartForEmergency();
+          return false;
+        }
         this.emitScheduleClientUpdate({ action: 'START', streamVersion: result.version });
       } else {
+        if (this.hasActiveEmergency()) return false;
         await this.startFileSchedule(schedule, resetPosition);
+        if (this.hasActiveEmergency()) {
+          console.log(`SCHEDULE_FILE_START_ABORTED_BY_EMERGENCY id=${schedule.scheduleId} name=${schedule.name}`);
+          this.abortScheduleStartForEmergency();
+          return false;
+        }
       }
 
       if (this.pausedNormalScheduleId === schedule.scheduleId) {
@@ -602,7 +633,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
     this.scheduleStreamRestartTimer = setTimeout(() => {
       this.scheduleStreamRestartTimer = null;
-      if (this.activeScheduleId !== schedule.scheduleId || !this.schedules.isScheduleActive(schedule)) return;
+      if (this.hasActiveEmergency() || this.activeScheduleId !== schedule.scheduleId || !this.schedules.isScheduleActive(schedule)) return;
       this.startSchedule(schedule, true, true).catch((error) => {
         console.error(`Schedule stream restart failed: ${error.message}`);
       });
@@ -686,6 +717,13 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     this.activeSchedulePriority = null;
     this.activeSchedule = null;
     this.activeScheduleDeviceIds = [];
+  }
+
+  private abortScheduleStartForEmergency() {
+    this.emitToActiveScheduleDevices('STOP');
+    this.emitScheduleClientUpdate({ action: 'STOP' });
+    this.clearActiveSchedule();
+    this.emitScheduleStatus();
   }
 
   private clearScheduleStreamRestart() {
@@ -810,7 +848,17 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     return parts.length ? parts.join(' / ') : 'thông tin rỗng';
   }
 
+  beginEmergencyStartup(sessionId: string) {
+    this.pendingEmergencySessionId = sessionId;
+  }
+
   setActiveEmergency(deviceIds: string[], payload: EmergencyPlaybackPayload) {
+    if (this.pendingEmergencySessionId && this.pendingEmergencySessionId !== payload.sessionId) {
+      console.log(
+        `EMERGENCY_PENDING_REPLACED pendingSessionId=${this.pendingEmergencySessionId} activeSessionId=${payload.sessionId}`,
+      );
+    }
+    this.pendingEmergencySessionId = null;
     this.activeEmergency = {
       ...payload,
       targetDeviceIds: deviceIds,
@@ -818,16 +866,26 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   }
 
   clearActiveEmergency(sessionId?: string) {
-    if (sessionId && this.activeEmergency?.sessionId !== sessionId) return;
-    this.activeEmergency = null;
+    if (!sessionId) {
+      this.pendingEmergencySessionId = null;
+      this.activeEmergency = null;
+      return;
+    }
+
+    if (this.pendingEmergencySessionId === sessionId) this.pendingEmergencySessionId = null;
+    if (this.activeEmergency?.sessionId === sessionId) this.activeEmergency = null;
   }
 
   hasActiveEmergency() {
-    return Boolean(this.activeEmergency);
+    return Boolean(this.activeEmergency || this.pendingEmergencySessionId);
   }
 
   isActiveEmergencySession(sessionId: string) {
-    return this.activeEmergency?.sessionId === sessionId;
+    return this.activeEmergency?.sessionId === sessionId || this.pendingEmergencySessionId === sessionId;
+  }
+
+  isPendingEmergencySession(sessionId: string) {
+    return this.pendingEmergencySessionId === sessionId;
   }
 
   /** Gửi lệnh phát khẩn cấp đến các browser client đang mô phỏng thiết bị */
