@@ -6,6 +6,7 @@ import type { Device, DeviceInput, DeviceRecordingSession, Schedule } from '../l
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
+import { Pagination, paginate, usePagination } from './Pagination';
 import { StatusBadge } from './StatusBadge';
 
 import { DeviceMapView } from './DeviceMapView';
@@ -54,6 +55,16 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     if (!keyword) return devices;
     return devices.filter((device) => getDeviceSearchValues(device).some((value) => normalizeSearchText(value).includes(keyword)));
   }, [devices, search]);
+  const settingsPagination = usePagination(filteredDevices.length);
+  const logsPagination = usePagination(devices.length);
+  const pagedSettingsDevices = useMemo(
+    () => paginate(filteredDevices, settingsPagination.page, settingsPagination.pageSize),
+    [filteredDevices, settingsPagination.page, settingsPagination.pageSize],
+  );
+  const pagedLogDevices = useMemo(
+    () => paginate(devices, logsPagination.page, logsPagination.pageSize),
+    [devices, logsPagination.page, logsPagination.pageSize],
+  );
 
   const visibleStats = useMemo(() => {
     const online = filteredDevices.filter((device) => device.online).length;
@@ -281,6 +292,10 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    settingsPagination.setPage(1);
+  }, [search, settingsPagination.setPage]);
+
   return (
     <Panel title="Quản lý thiết bị" description="Vận hành, cấu hình và theo dõi trạng thái thiết bị phát thanh.">
       <DataState loading={loading} error={error} empty={!devices.length} emptyText="Chưa có thiết bị." />
@@ -442,7 +457,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredDevices.map((device) => (
+                      {pagedSettingsDevices.map((device) => (
                         <tr key={device.deviceId}>
                           <DeviceInfoCell device={device} />
                           <td>{device.area || '-'}</td>
@@ -462,6 +477,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                       ))}
                     </tbody>
                   </table>
+                  <Pagination page={settingsPagination.page} pageSize={settingsPagination.pageSize} totalItems={filteredDevices.length} onPageChange={settingsPagination.setPage} />
                 </div>
               </div>
               {modalOpen ? (
@@ -535,7 +551,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                   </tr>
                 </thead>
                 <tbody>
-                  {devices.map((device) => (
+                  {pagedLogDevices.map((device) => (
                     <tr key={device.deviceId}>
                       <td>{formatDateTime(device.playbackUpdatedAt || device.lastSyncedAt || device.lastSeenAt || device.updatedAt)}</td>
                       <td>
@@ -552,6 +568,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                   ))}
                 </tbody>
               </table>
+              <Pagination page={logsPagination.page} pageSize={logsPagination.pageSize} totalItems={devices.length} onPageChange={logsPagination.setPage} />
             </div>
           ) : null}
         </div>

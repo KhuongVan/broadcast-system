@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { adminApi } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import type { Device, EmergencyBroadcastSession, EmergencySource, EmergencySourceInput } from '../lib/types';
+import { Pagination, paginate, usePagination } from './Pagination';
 
 const DURATION_OPTIONS = [15, 30, 60] as const;
 type DurationMinutes = (typeof DURATION_OPTIONS)[number];
@@ -41,6 +42,16 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
       ),
     [devices, deviceSearch],
   );
+  const emergencyDevicePagination = usePagination(filteredDevices.length);
+  const historyPagination = usePagination(sessions.length);
+  const pagedEmergencyDevices = useMemo(
+    () => paginate(filteredDevices, emergencyDevicePagination.page, emergencyDevicePagination.pageSize),
+    [emergencyDevicePagination.page, emergencyDevicePagination.pageSize, filteredDevices],
+  );
+  const pagedSessions = useMemo(
+    () => paginate(sessions, historyPagination.page, historyPagination.pageSize),
+    [historyPagination.page, historyPagination.pageSize, sessions],
+  );
 
   const allFilteredSelected =
     filteredDevices.length > 0 && filteredDevices.every((d) => selectedDeviceIds.has(d.deviceId));
@@ -65,6 +76,10 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
   }
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    emergencyDevicePagination.setPage(1);
+  }, [deviceSearch, emergencyDevicePagination.setPage]);
 
   useEffect(() => {
     if (!prefillDeviceId || loading) return;
@@ -277,7 +292,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
               {filteredDevices.length === 0 ? (
                 <div className="em-device-empty">Không tìm thấy thiết bị nào.</div>
               ) : (
-                filteredDevices.map((device) => {
+                pagedEmergencyDevices.map((device) => {
                   const checked = selectedDeviceIds.has(device.deviceId);
                   return (
                     <button
@@ -298,6 +313,12 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
                   );
                 })
               )}
+              <Pagination
+                page={emergencyDevicePagination.page}
+                pageSize={emergencyDevicePagination.pageSize}
+                totalItems={filteredDevices.length}
+                onPageChange={emergencyDevicePagination.setPage}
+              />
             </div>
           </div>
 
@@ -415,7 +436,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
                     </tr>
                   </thead>
                   <tbody>
-                    {sessions.map((session) => (
+                    {pagedSessions.map((session) => (
                       <tr key={session.sessionId}>
                         <td>
                           <div className="em-history-name">{session.sourceName}</div>
@@ -446,6 +467,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
                     ))}
                   </tbody>
                 </table>
+                <Pagination page={historyPagination.page} pageSize={historyPagination.pageSize} totalItems={sessions.length} onPageChange={historyPagination.setPage} />
               </div>
             )}
           </div>

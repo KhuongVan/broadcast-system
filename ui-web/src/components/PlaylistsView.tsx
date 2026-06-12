@@ -5,6 +5,7 @@ import type { AudioFile, Playlist, PlaylistItem } from '../lib/types';
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
+import { Pagination, paginate, usePagination } from './Pagination';
 
 type PlaylistsViewProps = {
   embedded?: boolean;
@@ -36,6 +37,11 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
   const totalSelectedSize = useMemo(
     () => selectedFiles.reduce((total, file) => total + file.size, 0),
     [selectedFiles],
+  );
+  const playlistPagination = usePagination(playlists.length);
+  const pagedPlaylists = useMemo(
+    () => paginate(playlists, playlistPagination.page, playlistPagination.pageSize),
+    [playlistPagination.page, playlistPagination.pageSize, playlists],
   );
 
   async function load(preferredId?: string) {
@@ -177,7 +183,7 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
                 </tr>
               </thead>
               <tbody>
-                {playlists.map((playlist) => (
+                {pagedPlaylists.map((playlist) => (
                   <tr key={playlist.playlistId}>
                     <td>
                       <strong>{playlist.name}</strong>
@@ -199,6 +205,7 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
                 ))}
               </tbody>
             </table>
+            <Pagination page={playlistPagination.page} pageSize={playlistPagination.pageSize} totalItems={playlists.length} onPageChange={playlistPagination.setPage} />
           </div>
         </div>
       ) : null}

@@ -6,6 +6,7 @@ import type { Device, LiveBroadcastSession, LiveBroadcastTargetType, ScheduleSta
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
+import { Pagination, paginate, usePagination } from './Pagination';
 import { StatusBadge } from './StatusBadge';
 
 type AdminStatus = {
@@ -55,6 +56,11 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
 
   const activeSession = useMemo(() => sessions.find((session) => session.status === 'STARTED') || null, [sessions]);
   const visibleSessions = useMemo(() => sessions, [sessions]);
+  const sessionPagination = usePagination(visibleSessions.length);
+  const pagedSessions = useMemo(
+    () => paginate(visibleSessions, sessionPagination.page, sessionPagination.pageSize),
+    [sessionPagination.page, sessionPagination.pageSize, visibleSessions],
+  );
 
   useEffect(() => {
     const socket = io('/', { withCredentials: true });
@@ -372,9 +378,9 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
                 </tr>
               </thead>
               <tbody>
-                {visibleSessions.map((session, index) => (
+                {pagedSessions.map((session, index) => (
                   <tr key={session.sessionId}>
-                    <td>{index + 1}</td>
+                    <td>{(sessionPagination.page - 1) * sessionPagination.pageSize + index + 1}</td>
                     <td>
                       <strong>{session.title}</strong>
                       {session.micLabel ? <div className="subtext">{session.micLabel}</div> : null}
@@ -407,6 +413,7 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
             <div className="live-table-footer">
               <span>Tổng: {visibleSessions.length} bản ghi</span>
             </div>
+            <Pagination page={sessionPagination.page} pageSize={sessionPagination.pageSize} totalItems={visibleSessions.length} onPageChange={sessionPagination.setPage} />
           </div>
 
           {modalOpen ? (

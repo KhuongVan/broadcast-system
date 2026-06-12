@@ -525,6 +525,52 @@ audio {
   overflow-x: auto;
 }
 
+.pagination-bar {
+  align-items: center;
+  border-top: 1px solid #e6edf5;
+  color: #334155;
+  display: flex;
+  flex-wrap: wrap;
+  font-weight: 800;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 0 0;
+}
+
+.pagination-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pagination-actions button {
+  background: #fff;
+  border: 1px solid #d8e2ef;
+  border-radius: 8px;
+  color: #334155;
+  font-weight: 900;
+  min-height: 34px;
+  padding: 7px 11px;
+}
+
+.pagination-actions button.active {
+  background: #1458f5;
+  border-color: #1458f5;
+  color: #fff;
+}
+
+.pagination-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.pagination-gap {
+  color: #64748b;
+  font-weight: 900;
+  padding: 0 2px;
+}
+
 .padded-table {
   padding: 18px;
 }
@@ -2093,6 +2139,10 @@ audio {
 .em-device-list-wrap {
   max-height: 260px;
   overflow-y: auto;
+}
+
+.em-device-list-wrap .pagination-bar {
+  margin: 0 14px 10px;
 }
 
 .em-device-row {

@@ -1,9 +1,10 @@
-import { ChangeEvent, useEffect, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { adminApi } from '../lib/api';
 import { formatBytes, formatDateTime } from '../lib/format';
 import type { AudioFile } from '../lib/types';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
+import { Pagination, paginate, usePagination } from './Pagination';
 import { TtsForm } from './TtsForm';
 
 type FilesViewProps = {
@@ -16,6 +17,8 @@ export function FilesView({ embedded = false }: FilesViewProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [ttsModalOpen, setTtsModalOpen] = useState(false);
+  const filePagination = usePagination(files.length);
+  const pagedFiles = useMemo(() => paginate(files, filePagination.page, filePagination.pageSize), [filePagination.page, filePagination.pageSize, files]);
 
   async function load() {
     setLoading(true);
@@ -88,7 +91,7 @@ export function FilesView({ embedded = false }: FilesViewProps) {
               </tr>
             </thead>
             <tbody>
-              {files.map((file) => (
+              {pagedFiles.map((file) => (
                 <tr key={file.fileId}>
                   <td>
                     <strong>{file.originalName}</strong>
@@ -104,6 +107,7 @@ export function FilesView({ embedded = false }: FilesViewProps) {
               ))}
             </tbody>
           </table>
+          <Pagination page={filePagination.page} pageSize={filePagination.pageSize} totalItems={files.length} onPageChange={filePagination.setPage} />
         </div>
       ) : null}
     </Panel>

@@ -4,6 +4,7 @@ import type { AudioFile, Playlist, Schedule, ScheduleInput } from '../lib/types'
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
+import { Pagination, paginate, usePagination } from './Pagination';
 import { StatusBadge } from './StatusBadge';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -40,6 +41,11 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const [testResult, setTestResult] = useState('');
 
   const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
+  const schedulePagination = usePagination(schedules.length);
+  const pagedSchedules = useMemo(
+    () => paginate(schedules, schedulePagination.page, schedulePagination.pageSize),
+    [schedulePagination.page, schedulePagination.pageSize, schedules],
+  );
 
   async function load() {
     setLoading(true);
@@ -196,7 +202,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                 </tr>
               </thead>
               <tbody>
-                {schedules.map((schedule) => (
+                {pagedSchedules.map((schedule) => (
                   <tr key={schedule.scheduleId}>
                     <td>
                       <strong>{schedule.name}</strong>
@@ -226,6 +232,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                 ))}
               </tbody>
             </table>
+            <Pagination page={schedulePagination.page} pageSize={schedulePagination.pageSize} totalItems={schedules.length} onPageChange={schedulePagination.setPage} />
           </div>
           {modalOpen ? (
             <Modal title={editingId ? 'Sửa lịch phát' : 'Tạo lịch phát'} onClose={closeModal}>
