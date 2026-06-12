@@ -6,6 +6,7 @@ export type DeviceClientRequest = Request & {
 };
 
 export type DeviceClientRegisterBody = {
+  deviceId?: string;
   androidId?: string;
   macAddress?: string;
   name?: string;
@@ -38,6 +39,16 @@ export type DeviceClientMicTestUploadBody = {
   durationSeconds?: number | string;
   message?: string;
   recordingId?: string;
+};
+
+export type DeviceClientPlaybackRecordingUploadBody = {
+  scheduleId?: string;
+  fileId?: string;
+  playStatus?: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationSeconds?: number | string;
+  message?: string;
 };
 
 export type DeviceClientCommandResultBody = {

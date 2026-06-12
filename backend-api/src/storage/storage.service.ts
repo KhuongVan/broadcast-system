@@ -161,6 +161,11 @@ type DeviceRecordingSessionRow = {
   recording_id: string;
   device_id: string;
   status: DeviceRecordingStatus;
+  recording_source?: 'MANUAL' | 'AUTO_PLAYBACK';
+  schedule_id?: string | null;
+  file_id?: string | null;
+  playback_started_at?: string | null;
+  playback_ended_at?: string | null;
   started_at: string | null;
   stopped_at: string | null;
   uploaded_at: string | null;
@@ -242,6 +247,11 @@ export type DeviceRecordingSessionRecord = {
   recordingId: string;
   deviceId: string;
   status: DeviceRecordingStatus;
+  recordingSource: 'MANUAL' | 'AUTO_PLAYBACK';
+  scheduleId: string | null;
+  fileId: string | null;
+  playbackStartedAt: string | null;
+  playbackEndedAt: string | null;
   startedAt: string | null;
   stoppedAt: string | null;
   uploadedAt: string | null;
@@ -405,6 +415,98 @@ export class StorageService {
     }
 
     return this.toDeviceMicTestUploadRecord(row);
+  }
+
+  async uploadDevicePlaybackRecording(input: {
+    deviceId: string;
+    file: Express.Multer.File;
+    fileName: string;
+    extension: string;
+    durationSeconds: number | null;
+    message: string | null;
+    scheduleId: string | null;
+    fileId: string | null;
+    playbackStartedAt: string | null;
+    playbackEndedAt: string | null;
+  }) {
+    if (!input.file.buffer) {
+      throw new Error('Upload phai dung memory storage de gui len Supabase.');
+    }
+
+    const uploadId = randomUUID();
+    const recordingId = randomUUID();
+    const extension = input.extension.startsWith('.') ? input.extension : `.${input.extension}`;
+    const dateFolder = new Date().toISOString().slice(0, 10);
+    const safeBaseName = input.fileName
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '') || uploadId;
+    const storagePath = `recordings/${input.deviceId}/${dateFolder}/${safeBaseName}-${uploadId}${extension}`;
+
+    const { error: uploadError } = await this.supabase.storage
+      .from(this.bucket)
+      .upload(storagePath, input.file.buffer, {
+        contentType: input.file.mimetype || 'application/octet-stream',
+        cacheControl: '86400',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(`Khong upload duoc file ghi am tu dong: ${uploadError.message}`);
+    }
+
+    const now = new Date().toISOString();
+    const uploadRow: DeviceMicTestUploadRow = {
+      upload_id: uploadId,
+      device_id: input.deviceId,
+      file_name: input.fileName,
+      storage_path: storagePath,
+      mimetype: input.file.mimetype || 'application/octet-stream',
+      size: input.file.size,
+      duration_seconds: input.durationSeconds,
+      message: input.message,
+      created_at: now,
+    };
+
+    const { error: uploadInsertError } = await this.supabase.from('device_mic_test_uploads').insert(uploadRow);
+
+    if (uploadInsertError) {
+      await this.supabase.storage.from(this.bucket).remove([storagePath]);
+      throw new Error(`Khong ghi metadata file ghi am tu dong: ${uploadInsertError.message}`);
+    }
+
+    const recordingRow = {
+      recording_id: recordingId,
+      device_id: input.deviceId,
+      status: 'COMPLETED',
+      recording_source: 'AUTO_PLAYBACK',
+      schedule_id: input.scheduleId,
+      file_id: input.fileId,
+      playback_started_at: input.playbackStartedAt,
+      playback_ended_at: input.playbackEndedAt,
+      started_at: input.playbackStartedAt || now,
+      stopped_at: input.playbackEndedAt || now,
+      uploaded_at: now,
+      duration_seconds: input.durationSeconds,
+      message: input.message || 'Thiet bi da tu dong upload file ghi am phat thanh.',
+      upload_id: uploadId,
+      updated_at: now,
+    };
+
+    const { data, error: recordingInsertError } = await this.supabase
+      .from('device_recording_sessions')
+      .insert(recordingRow)
+      .select('*')
+      .maybeSingle();
+
+    if (recordingInsertError) {
+      await this.supabase.storage.from(this.bucket).remove([storagePath]);
+      throw new Error(`Khong ghi phien ghi am tu dong: ${recordingInsertError.message}`);
+    }
+
+    if (!data) throw new Error('Khong tao duoc phien ghi am tu dong.');
+    return this.toDeviceRecordingSessionRecord(data as DeviceRecordingSessionRow);
   }
 
   async startDeviceRecording(deviceId: string, maxDurationSeconds: number) {
@@ -609,6 +711,11 @@ export class StorageService {
       recordingId: row.recording_id,
       deviceId: row.device_id,
       status: row.status,
+      recordingSource: row.recording_source || 'MANUAL',
+      scheduleId: row.schedule_id || null,
+      fileId: row.file_id || null,
+      playbackStartedAt: row.playback_started_at || null,
+      playbackEndedAt: row.playback_ended_at || null,
       startedAt: row.started_at,
       stoppedAt: row.stopped_at,
       uploadedAt: row.uploaded_at,
@@ -1508,6 +1615,17 @@ export class StorageService {
     if (error) throw new Error(`Khong cap nhat duoc heartbeat thiet bi: ${error.message}`);
     if (!data) throw new Error('Khong tim thay thiet bi.');
     return this.toDeviceRecord(data as DeviceRow);
+  }
+
+  async markStaleDevicesOffline(staleBeforeIso: string) {
+    const { error } = await this.supabase
+      .from('devices')
+      .update({ online: false, updated_at: new Date().toISOString() })
+      .eq('online', true)
+      .lt('last_seen_at', staleBeforeIso)
+      .is('deleted_at', null);
+
+    if (error) throw new Error(`Khong cap nhat duoc thiet bi mat ket noi: ${error.message}`);
   }
 
   async syncDeviceSchedule(

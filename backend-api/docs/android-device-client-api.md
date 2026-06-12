@@ -19,7 +19,7 @@ Neu app bi mat token, goi lai `POST /register` bang cung `androidId` hoac `macAd
 
 ## Luong tich hop de xuat
 
-1. App mo lan dau, lay `androidId` va neu co thi lay them `macAddress`.
+1. App mo lan dau, lay `androidId` va neu co thi lay them `macAddress`; browser simulator co the dung `deviceId` cua thiet bi da tao.
 2. Goi `POST /api/device-client/register`.
 3. Luu `deviceToken` tu response.
 4. Goi `POST /api/device-client/heartbeat` moi `heartbeatIntervalSeconds` giay.
@@ -27,6 +27,7 @@ Neu app bi mat token, goi lai `POST /register` bang cung `androidId` hoac `macAd
 6. Khi bat dau phat, dung phat, hoac gap loi, goi `POST /api/device-client/playback-state`.
 7. Khi tai/sync lich xong, goi `POST /api/device-client/sync-result`.
 8. Khi can test mic cua Android, thu mot doan ngan va upload bang `POST /api/device-client/mic-test-upload`.
+9. Khi thiet bi bat dau phat, tu ghi toi da 60 giay dau va upload bang `POST /api/device-client/playback-recording-upload` de lam bang chung phat thanh.
 
 ## Endpoint reference
 
@@ -42,6 +43,7 @@ Request body:
 
 ```json
 {
+  "deviceId": "11111111-1111-1111-1111-111111111111",
   "androidId": "a1b2c3d4e5f6",
   "macAddress": "22:22:E5:6C:16:F4",
   "name": "Android Box Test 01",
@@ -52,7 +54,8 @@ Request body:
 
 Notes:
 
-- `androidId` hoac `macAddress` bat buoc co it nhat mot truong.
+- Gui `deviceId`, `androidId`, hoac `macAddress` bat buoc co it nhat mot truong.
+- `deviceId` dung cho thiet bi da ton tai trong he thong, phu hop browser simulator va test theo UUID.
 - `macAddress` la optional. Neu Android khong lay duoc MAC, chi can gui `androidId`.
 - `connectionType` nhan `LAN`, `4G`, hoac `UNKNOWN`. Neu khong gui, backend luu `UNKNOWN` cho thiet bi moi.
 - Neu thiet bi chua ton tai, backend tu tao thiet bi moi voi area mac dinh `Chưa phân khu`.
@@ -125,6 +128,7 @@ Notes:
 
 - `batteryLevel` se duoc clamp trong khoang `0..100`.
 - `connectionType` la optional. Neu khong gui, backend se suy luan tu `networkType`: `wifi/ethernet` thanh `LAN`, `cellular/mobile/4g/lte/5g` thanh `4G`.
+- App nen goi heartbeat moi 30 giay. Neu backend khong nhan heartbeat trong 90 giay, thiet bi se duoc danh dau mat ket noi nhung `lastSeenAt` van giu moc heartbeat cuoi.
 
 Response example:
 
@@ -543,6 +547,35 @@ Loi thuong gap:
 - `400`: Thieu file field `audio`.
 - `400`: Dinh dang file khong duoc ho tro.
 - `401`: Thieu bearer token hoac token khong hop le.
+
+### Upload playback recording
+
+Upload file ghi am bang chung phat thanh do thiet bi tu ghi khi bat dau phat. Endpoint nay khong can admin bam ghi am.
+
+```http
+POST /api/device-client/playback-recording-upload
+Authorization: Bearer <deviceToken>
+Content-Type: multipart/form-data
+```
+
+Form fields:
+
+```yaml
+audio: <binary audio file>       # required
+scheduleId: "uuid"               # optional, neu biet lich dang phat
+fileId: "uuid"                   # optional, neu dang phat file cached
+playStatus: "PLAYING"            # optional
+startedAt: "2026-06-05T03:00:00.000Z"
+endedAt: "2026-06-05T03:01:00.000Z"
+durationSeconds: "60"
+message: "Playback proof from Android"
+```
+
+Notes:
+
+- Thiet bi nen bat dau recorder cung luc bat dau phat va ghi toi da 60 giay dau.
+- File duoc luu trong Storage path `recordings/<deviceId>/<yyyy-mm-dd>/...`.
+- Backend tao ban ghi `device_recording_sessions` voi `recording_source = AUTO_PLAYBACK`; admin xem file trong cot `File ghi am` cua man hinh Van hanh thiet bi.
 
 ### Get commands
 

@@ -10,6 +10,7 @@ import {
   DeviceClientHeartbeatBody,
   DeviceClientMicTestUploadBody,
   DeviceClientPlaybackStateBody,
+  DeviceClientPlaybackRecordingUploadBody,
   DeviceClientRecordingStatusBody,
   DeviceClientRegisterBody,
   DeviceClientRequest,
@@ -69,6 +70,22 @@ export class DeviceClientController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.deviceClient.uploadMicTest(request.deviceClient!, body, file);
+  }
+
+  @Post('/playback-recording-upload')
+  @UseGuards(DeviceClientAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: memoryStorage(),
+      limits: { fileSize: config.maxUploadSize },
+    }),
+  )
+  uploadPlaybackRecording(
+    @Req() request: DeviceClientRequest,
+    @Body() body: DeviceClientPlaybackRecordingUploadBody,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.deviceClient.uploadPlaybackRecording(request.deviceClient!, body, file);
   }
 
   @Get('/commands')

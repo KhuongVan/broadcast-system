@@ -9,6 +9,7 @@ import {
   DeviceClientEmergencyFinishedBody,
   DeviceClientHeartbeatBody,
   DeviceClientMicTestUploadBody,
+  DeviceClientPlaybackRecordingUploadBody,
   DeviceClientPlaybackStateBody,
   DeviceClientRecordingStatusBody,
   DeviceClientRegisterBody,
@@ -41,23 +42,34 @@ export class DeviceClientService {
   constructor(private readonly storage: StorageService) {}
 
   async register(body: DeviceClientRegisterBody) {
+    const deviceId = this.optionalText(body.deviceId);
     const androidId = this.optionalText(body.androidId);
     const macAddressInput = this.optionalText(body.macAddress)?.toUpperCase() || null;
 
-    if (!androidId && !macAddressInput) {
-      throw new BadRequestException('Vui long gui androidId hoac macAddress.');
+    if (!deviceId && !androidId && !macAddressInput) {
+      throw new BadRequestException('Vui long gui deviceId, androidId hoac macAddress.');
     }
 
-    const macAddress = macAddressInput || `ANDROID:${androidId}`;
-    const existing = await this.storage.findDeviceForClientRegistration({ androidId, macAddress: macAddressInput });
+    const macAddress = macAddressInput || (androidId ? `ANDROID:${androidId}` : null);
+    let existing = deviceId && this.isUuid(deviceId) ? await this.storage.getDevice(deviceId) : null;
+    if (!existing) {
+      existing = await this.storage.findDeviceForClientRegistration({ androidId, macAddress: macAddressInput });
+    }
+    if (deviceId && !existing && !androidId && !macAddressInput) {
+      throw new NotFoundException('Khong tim thay thiet bi theo deviceId.');
+    }
+    if (!existing && !macAddress) {
+      throw new BadRequestException('Vui long gui androidId hoac macAddress de tao thiet bi moi.');
+    }
     const appVersion = this.optionalText(body.appVersion);
     const connectionType = this.normalizeConnectionType(body.connectionType);
+    const createMacAddress = macAddress || '';
     let device = existing
       ? await this.storage.updateDeviceClientRegistration(existing.deviceId, { androidId, appVersion, connectionType })
       : await this.storage.createDeviceClient({
           androidId,
-          macAddress,
-          name: this.normalizeDeviceName(body.name, androidId, macAddress),
+          macAddress: createMacAddress,
+          name: this.normalizeDeviceName(body.name, androidId, createMacAddress),
           connectionType: connectionType || 'UNKNOWN',
           appVersion,
         });
@@ -188,6 +200,29 @@ export class DeviceClientService {
         url: upload.url,
         createdAt: upload.createdAt,
       },
+      serverTime: this.serverTime(),
+    };
+  }
+
+  async uploadPlaybackRecording(device: DeviceRecord, body: DeviceClientPlaybackRecordingUploadBody, file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Vui long gui file audio trong field "audio".');
+    this.ensureMicTestFileAllowed(file);
+
+    const recording = await this.storage.uploadDevicePlaybackRecording({
+      deviceId: device.deviceId,
+      file,
+      fileName: this.safeFileName(file.originalname || this.buildPlaybackRecordingFileName(device.deviceId, file)),
+      extension: this.getMicTestExtension(file),
+      durationSeconds: this.normalizeDurationSeconds(body.durationSeconds),
+      message: this.optionalText(body.message) || this.buildPlaybackRecordingMessage(body.playStatus),
+      scheduleId: this.optionalUuid(body.scheduleId),
+      fileId: this.optionalUuid(body.fileId),
+      playbackStartedAt: this.optionalIsoDate(body.startedAt),
+      playbackEndedAt: this.optionalIsoDate(body.endedAt),
+    });
+
+    return {
+      recording,
       serverTime: this.serverTime(),
     };
   }
@@ -349,9 +384,36 @@ export class DeviceClientService {
     return fileName || 'mic-test.webm';
   }
 
+  private buildPlaybackRecordingFileName(deviceId: string, file: Express.Multer.File) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const suffix = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-6) || 'device';
+    return `${timestamp}-${suffix}${this.getMicTestExtension(file)}`;
+  }
+
+  private buildPlaybackRecordingMessage(playStatus: unknown) {
+    const status = this.optionalText(playStatus);
+    return status ? `Thiet bi upload file ghi am bang chung phat thanh (${status}).` : 'Thiet bi upload file ghi am bang chung phat thanh.';
+  }
+
   private optionalText(value: unknown) {
     const text = String(value || '').trim();
     return text || null;
+  }
+
+  private optionalUuid(value: unknown) {
+    const text = this.optionalText(value);
+    return text && this.isUuid(text) ? text : null;
+  }
+
+  private optionalIsoDate(value: unknown) {
+    const text = this.optionalText(value);
+    if (!text) return null;
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  private isUuid(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
   }
 
   private normalizeConnectionType(value: unknown): DeviceConnectionType | undefined {

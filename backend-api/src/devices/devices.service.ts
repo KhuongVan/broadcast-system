@@ -1,12 +1,27 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
 import { DeviceInput } from './device.types';
 
 const RECORDING_MAX_DURATION_SECONDS = 60;
+const DEVICE_OFFLINE_AFTER_MS = 90_000;
+const DEVICE_OFFLINE_SCAN_INTERVAL_MS = 30_000;
 
 @Injectable()
-export class DevicesService {
+export class DevicesService implements OnModuleInit, OnModuleDestroy {
+  private offlineScanTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(private readonly storage: StorageService) {}
+
+  onModuleInit() {
+    this.markStaleDevicesOffline().catch((error) => console.error(`Device offline scan error: ${error.message}`));
+    this.offlineScanTimer = setInterval(() => {
+      this.markStaleDevicesOffline().catch((error) => console.error(`Device offline scan error: ${error.message}`));
+    }, DEVICE_OFFLINE_SCAN_INTERVAL_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.offlineScanTimer) clearInterval(this.offlineScanTimer);
+  }
 
   listDevices() {
     return this.storage.listDevices();
@@ -113,5 +128,10 @@ export class DevicesService {
       throw new BadRequestException('Am luong phai la so nguyen tu 0 den 15.');
     }
     return volumeLevel;
+  }
+
+  private markStaleDevicesOffline() {
+    const staleBeforeIso = new Date(Date.now() - DEVICE_OFFLINE_AFTER_MS).toISOString();
+    return this.storage.markStaleDevicesOffline(staleBeforeIso);
   }
 }

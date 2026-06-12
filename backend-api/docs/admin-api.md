@@ -678,7 +678,7 @@ Response:
 
 ### List device recordings
 
-Lay danh sach phien ghi am kiem tra gan nhat cua thiet bi. Ban ghi hoan tat co `audioUrl` de admin nghe lai.
+Lay danh sach phien ghi am gan nhat cua thiet bi, bao gom phien thu cong va file bang chung phat thanh do thiet bi tu upload. Ban ghi hoan tat co `audioUrl` de admin nghe lai.
 
 ```http
 GET /api/devices/:deviceId/recordings
@@ -693,6 +693,11 @@ Response:
       "recordingId": "uuid",
       "deviceId": "uuid",
       "status": "COMPLETED",
+      "recordingSource": "AUTO_PLAYBACK",
+      "scheduleId": "uuid",
+      "fileId": "uuid",
+      "playbackStartedAt": "2026-06-05T03:04:00.000Z",
+      "playbackEndedAt": "2026-06-05T03:05:00.000Z",
       "durationSeconds": 12,
       "message": "Da upload file ghi am.",
       "audioUrl": "https://signed-url.example.com/mic-test.webm",

@@ -15,6 +15,20 @@ type ClientRegistrationStatus = {
   };
 };
 
+type DeviceClientRegisterResponse = {
+  device: {
+    deviceId: string;
+    name: string;
+    area: string;
+  };
+  deviceToken: string;
+  heartbeatIntervalSeconds: number;
+};
+
+type DeviceClientHeartbeatResponse = {
+  heartbeatIntervalSeconds: number;
+};
+
 type ClientUpdatePayload = {
   action: 'START' | 'STOP';
   streamVersion?: number;
@@ -58,6 +72,20 @@ type HlsConstructor = {
   };
 };
 
+type PlaybackRecordingMetadata = {
+  label: string;
+  fileId?: string;
+};
+
+type PlaybackRecordingState = {
+  recorder: MediaRecorder;
+  chunks: Blob[];
+  startedAt: string;
+  timer: number | null;
+  stream: MediaStream;
+  metadata: PlaybackRecordingMetadata;
+};
+
 declare global {
   interface Window {
     Hls?: HlsConstructor;
@@ -69,6 +97,7 @@ const STORE_NAME = 'audio-files';
 const POSITION_KEY = 'broadcast-file-positions';
 const STREAM_PATH = 'loacuaxa';
 const HLS_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+const SIMULATOR_APP_VERSION = 'browser-simulator';
 
 let hlsScriptPromise: Promise<HlsConstructor> | null = null;
 
@@ -100,14 +129,18 @@ export function ClientSimulatorView() {
   const retryTimerRef = useRef<number | null>(null);
   const connectTimerRef = useRef<number | null>(null);
   const registrationTimerRef = useRef<number | null>(null);
+  const heartbeatTimerRef = useRef<number | null>(null);
+  const deviceTokenRef = useRef<string | null>(null);
   const emergencyTimerRef = useRef<number | null>(null);
   const currentStreamVersionRef = useRef<number | string | null>(null);
   const currentObjectUrlRef = useRef<string | null>(null);
   const currentLocalFileIdRef = useRef<string | null>(null);
+  const playbackRecordingRef = useRef<PlaybackRecordingState | null>(null);
   const positionsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     loadStoredPositions(positionsRef.current);
+    void registerDeviceClient();
     const socket = io('/', { withCredentials: true });
     socketRef.current = socket;
 
@@ -142,12 +175,76 @@ export function ClientSimulatorView() {
 
     return () => {
       clearRegistrationTimer();
+      clearHeartbeatTimer();
       clearEmergencyTimer();
       stopPlayback();
       socket.disconnect();
       socketRef.current = null;
     };
   }, [registrationLabel, registrationPayload]);
+
+  async function registerDeviceClient() {
+    if (!registrationLabel) return;
+
+    try {
+      const response = await fetch('/api/device-client/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...registrationPayload,
+          appVersion: SIMULATOR_APP_VERSION,
+          connectionType: inferBrowserConnectionType(),
+        }),
+      });
+      if (!response.ok) throw new Error(await readResponseMessage(response));
+
+      const payload = (await response.json()) as DeviceClientRegisterResponse;
+      deviceTokenRef.current = payload.deviceToken;
+      localStorage.setItem(getDeviceTokenStorageKey(registrationPayload), payload.deviceToken);
+      setDeviceInfo(`Thiết bị mô phỏng: ${payload.device.name} | Địa bàn: ${payload.device.area} | ID: ${payload.device.deviceId}`);
+      scheduleHeartbeat(payload.heartbeatIntervalSeconds);
+    } catch (error) {
+      deviceTokenRef.current = localStorage.getItem(getDeviceTokenStorageKey(registrationPayload));
+      if (deviceTokenRef.current) {
+        setDeviceInfo(`Không đăng ký REST được, đang thử heartbeat bằng token đã lưu. Lỗi: ${getErrorMessage(error)}`);
+        scheduleHeartbeat(30);
+        return;
+      }
+      setDeviceInfo(`Không đăng ký REST thiết bị mô phỏng: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async function sendHeartbeat() {
+    if (!deviceTokenRef.current) return;
+
+    const response = await fetch('/api/device-client/heartbeat', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${deviceTokenRef.current}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        appVersion: SIMULATOR_APP_VERSION,
+        connectionType: inferBrowserConnectionType(),
+        networkType: getBrowserNetworkType(),
+      }),
+    });
+    if (!response.ok) throw new Error(await readResponseMessage(response));
+
+    const payload = (await response.json()) as DeviceClientHeartbeatResponse;
+    scheduleHeartbeat(payload.heartbeatIntervalSeconds);
+  }
+
+  function scheduleHeartbeat(intervalSeconds: number) {
+    clearHeartbeatTimer();
+    const delayMs = Math.max(5, intervalSeconds || 30) * 1000;
+    heartbeatTimerRef.current = window.setTimeout(() => {
+      sendHeartbeat().catch((error) => {
+        setDeviceInfo(`Heartbeat thiết bị mô phỏng lỗi: ${getErrorMessage(error)}`);
+        scheduleHeartbeat(intervalSeconds);
+      });
+    }, delayMs);
+  }
 
   function registerSimulatedDevice(socket: Socket) {
     clearRegistrationTimer();
@@ -286,10 +383,11 @@ export function ClientSimulatorView() {
     audio.onended = () => {
       setLocalPosition(fileId, 0);
       currentLocalFileIdRef.current = null;
+      stopPlaybackRecording();
       socketRef.current?.emit('client_file_ended', { fileId });
     };
 
-    void playAudio('ĐANG PHÁT THANH...', record.originalName);
+    void playAudio('ĐANG PHÁT THANH...', record.originalName, { label: record.originalName, fileId });
   }
 
   async function findFileInCatalog(fileId: string) {
@@ -325,7 +423,7 @@ export function ClientSimulatorView() {
     if (!Hls.isSupported()) {
       if (audio.canPlayType('application/vnd.apple.mpegurl')) {
         audio.src = streamUrl;
-        await playAudio('ĐANG PHÁT THANH...', label);
+        await playAudio('ĐANG PHÁT THANH...', label, { label });
         return;
       }
       setStatus('TRÌNH DUYỆT KHÔNG HỖ TRỢ HLS');
@@ -355,7 +453,7 @@ export function ClientSimulatorView() {
     });
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       clearConnectTimer();
-      void playAudio('ĐANG PHÁT THANH...', label);
+      void playAudio('ĐANG PHÁT THANH...', label, { label });
     });
     hls.on(Hls.Events.ERROR, (_event: unknown, errorData: { fatal?: boolean; details?: string; type?: string }) => {
       if (!errorData.fatal) return;
@@ -370,7 +468,7 @@ export function ClientSimulatorView() {
     });
   }
 
-  async function playAudio(successStatus: string, label: string) {
+  async function playAudio(successStatus: string, label: string, recordingMetadata?: PlaybackRecordingMetadata) {
     const audio = audioRef.current;
     if (!audio) return;
     try {
@@ -378,10 +476,100 @@ export function ClientSimulatorView() {
       setShowPlayButton(false);
       setStatus(successStatus);
       setCurrentName(label);
+      void startPlaybackRecording(recordingMetadata || { label });
     } catch {
       setShowPlayButton(true);
       setStatus('NHẤN ĐỂ KẾT NỐI LOA');
       setCurrentName(label);
+    }
+  }
+
+  async function startPlaybackRecording(metadata: PlaybackRecordingMetadata) {
+    if (!deviceTokenRef.current || playbackRecordingRef.current || typeof MediaRecorder === 'undefined') return;
+
+    try {
+      const stream = await getPlaybackRecordingStream();
+      if (!stream) return;
+
+      const mimeType = getRecordingMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const state: PlaybackRecordingState = {
+        recorder,
+        chunks: [],
+        startedAt: new Date().toISOString(),
+        timer: null,
+        stream,
+        metadata,
+      };
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) state.chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (state.timer) window.clearTimeout(state.timer);
+        state.stream.getTracks().forEach((track) => track.stop());
+        if (playbackRecordingRef.current === state) playbackRecordingRef.current = null;
+        uploadPlaybackRecording(state).catch((error) => console.warn(`Playback recording upload failed: ${getErrorMessage(error)}`));
+      };
+
+      playbackRecordingRef.current = state;
+      recorder.start();
+      state.timer = window.setTimeout(stopPlaybackRecording, 60_000);
+    } catch (error) {
+      console.warn(`Playback recording skipped: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async function getPlaybackRecordingStream() {
+    const audio = audioRef.current as (HTMLAudioElement & { captureStream?: () => MediaStream; mozCaptureStream?: () => MediaStream }) | null;
+    const captured = audio?.captureStream?.() || audio?.mozCaptureStream?.();
+    if (captured?.getAudioTracks().length) return captured;
+
+    if (!navigator.mediaDevices?.getUserMedia) return null;
+    return navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+  }
+
+  function stopPlaybackRecording() {
+    const state = playbackRecordingRef.current;
+    if (!state) return;
+    if (state.timer) window.clearTimeout(state.timer);
+    state.timer = null;
+    if (state.recorder.state !== 'inactive') {
+      state.recorder.stop();
+      return;
+    }
+    playbackRecordingRef.current = null;
+  }
+
+  async function uploadPlaybackRecording(state: PlaybackRecordingState) {
+    if (!state.chunks.length || !deviceTokenRef.current) return;
+
+    const endedAt = new Date().toISOString();
+    const blob = new Blob(state.chunks, { type: state.recorder.mimeType || 'audio/webm' });
+    if (!blob.size) return;
+
+    const extension = getRecordingExtension(blob.type);
+    const fileName = `${new Date(state.startedAt).toISOString().replace(/[:.]/g, '-')}-${state.metadata.label.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 48) || 'recording'}${extension}`;
+    const durationSeconds = Math.max(1, Math.round((new Date(endedAt).getTime() - new Date(state.startedAt).getTime()) / 1000));
+    const formData = new FormData();
+    formData.append('audio', blob, fileName);
+    formData.append('startedAt', state.startedAt);
+    formData.append('endedAt', endedAt);
+    formData.append('durationSeconds', String(durationSeconds));
+    formData.append('playStatus', 'PLAYING');
+    formData.append('message', `Browser simulator tự ghi bằng chứng phát: ${state.metadata.label}`);
+    if (state.metadata.fileId) formData.append('fileId', state.metadata.fileId);
+
+    const response = await fetch('/api/device-client/playback-recording-upload', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${deviceTokenRef.current}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(await readResponseMessage(response));
     }
   }
 
@@ -400,6 +588,7 @@ export function ClientSimulatorView() {
   }
 
   function stopPlayback() {
+    stopPlaybackRecording();
     cleanupHls();
     cleanupLocalAudio();
     currentStreamVersionRef.current = null;
@@ -515,6 +704,11 @@ export function ClientSimulatorView() {
     registrationTimerRef.current = null;
   }
 
+  function clearHeartbeatTimer() {
+    if (heartbeatTimerRef.current) window.clearTimeout(heartbeatTimerRef.current);
+    heartbeatTimerRef.current = null;
+  }
+
   function clearRetryTimer() {
     if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
     retryTimerRef.current = null;
@@ -556,6 +750,43 @@ function getRegistrationLabel(payload: { deviceId: string; macAddress: string; a
   if (payload.macAddress) return `MAC: ${payload.macAddress}`;
   if (payload.androidId) return `Android ID: ${payload.androidId}`;
   return '';
+}
+
+function getDeviceTokenStorageKey(payload: { deviceId: string; macAddress: string; androidId: string }) {
+  return `device-token:${payload.deviceId || payload.macAddress || payload.androidId}`;
+}
+
+function getBrowserNetworkType() {
+  const connection = (navigator as Navigator & { connection?: { effectiveType?: string; type?: string } }).connection;
+  return connection?.type || connection?.effectiveType || 'BROWSER';
+}
+
+function inferBrowserConnectionType() {
+  const networkType = getBrowserNetworkType().toLowerCase();
+  if (['wifi', 'ethernet', 'lan'].some((keyword) => networkType.includes(keyword))) return 'LAN';
+  if (['cellular', 'mobile', '4g', 'lte', '5g'].some((keyword) => networkType.includes(keyword))) return '4G';
+  return 'UNKNOWN';
+}
+
+function getRecordingMimeType() {
+  const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  return preferredTypes.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function getRecordingExtension(mimeType: string) {
+  if (mimeType.includes('mp4')) return '.m4a';
+  if (mimeType.includes('ogg')) return '.ogg';
+  if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return '.mp3';
+  return '.webm';
+}
+
+async function readResponseMessage(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json().catch(() => null);
+    return payload?.message || payload?.error || `HTTP ${response.status}`;
+  }
+  return response.text().catch(() => `HTTP ${response.status}`);
 }
 
 function loadStoredPositions(target: Map<string, number>) {

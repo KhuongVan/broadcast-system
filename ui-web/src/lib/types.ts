@@ -121,6 +121,11 @@ export type DeviceRecordingSession = {
   recordingId: string;
   deviceId: string;
   status: DeviceRecordingStatus;
+  recordingSource: 'MANUAL' | 'AUTO_PLAYBACK';
+  scheduleId: string | null;
+  fileId: string | null;
+  playbackStartedAt: string | null;
+  playbackEndedAt: string | null;
   startedAt: string | null;
   stoppedAt: string | null;
   uploadedAt: string | null;

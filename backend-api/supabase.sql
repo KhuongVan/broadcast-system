@@ -328,6 +328,11 @@ create table if not exists device_recording_sessions (
   recording_id uuid primary key default gen_random_uuid(),
   device_id uuid not null references devices(device_id) on delete cascade,
   status text not null default 'REQUESTED' check (status in ('REQUESTED', 'RECORDING', 'STOP_REQUESTED', 'UPLOADING', 'COMPLETED', 'FAILED', 'EXPIRED')),
+  recording_source text not null default 'MANUAL' check (recording_source in ('MANUAL', 'AUTO_PLAYBACK')),
+  schedule_id uuid references broadcast_schedules(schedule_id) on delete set null,
+  file_id uuid references audio_files(file_id) on delete set null,
+  playback_started_at timestamptz,
+  playback_ended_at timestamptz,
   started_at timestamptz,
   stopped_at timestamptz,
   uploaded_at timestamptz,
@@ -343,6 +348,34 @@ on device_recording_sessions(device_id, created_at desc);
 
 create index if not exists idx_device_recording_sessions_device_status
 on device_recording_sessions(device_id, status);
+
+alter table device_recording_sessions
+add column if not exists recording_source text not null default 'MANUAL';
+
+alter table device_recording_sessions
+add column if not exists schedule_id uuid references broadcast_schedules(schedule_id) on delete set null;
+
+alter table device_recording_sessions
+add column if not exists file_id uuid references audio_files(file_id) on delete set null;
+
+alter table device_recording_sessions
+add column if not exists playback_started_at timestamptz;
+
+alter table device_recording_sessions
+add column if not exists playback_ended_at timestamptz;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'device_recording_sessions_source_check'
+  ) then
+    alter table device_recording_sessions
+    add constraint device_recording_sessions_source_check
+    check (recording_source in ('MANUAL', 'AUTO_PLAYBACK'));
+  end if;
+end $$;
 
 create table if not exists device_schedule_assignments (
   assignment_id uuid primary key default gen_random_uuid(),

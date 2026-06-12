@@ -42,6 +42,11 @@ button:disabled {
   opacity: 0.6;
 }
 
+button.compact {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
 input,
 select,
 textarea {
@@ -1014,6 +1019,27 @@ audio {
   height: 32px;
   max-width: 240px;
   width: 100%;
+}
+
+.recording-files-table {
+  max-height: min(68vh, 720px);
+}
+
+.recording-files-table th:first-child,
+.recording-files-table td:first-child {
+  text-align: center;
+  width: 80px;
+}
+
+.recording-file-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.recording-file-actions .download-link {
+  color: #172033;
+  text-decoration: none;
 }
 
 .device-command-panel {
