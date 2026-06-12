@@ -810,12 +810,17 @@ GET /api/tts/voices
 Response:
 
 ```json
-[
-  {
-    "code": "banmai",
-    "label": "Ban Mai"
-  }
-]
+{
+  "provider": "fpt",
+  "defaultVoice": "banmai",
+  "defaultSpeed": "0",
+  "voices": [
+    {
+      "code": "banmai",
+      "label": "Ban Mai - Nữ miền Bắc"
+    }
+  ]
+}
 ```
 
 ### Generate TTS
@@ -836,7 +841,25 @@ Request:
 }
 ```
 
-Response phu thuoc provider TTS, nhung frontend hien dung ket qua de tao file audio va/hoac gan vao playlist.
+Response:
+
+```json
+{
+  "file": {
+    "fileId": "uuid",
+    "originalName": "Thong bao.mp3",
+    "storagePath": "audio/uuid.mp3",
+    "size": 12345,
+    "mimetype": "audio/mpeg",
+    "url": "/files/uuid",
+    "createdAt": "2026-06-12T00:00:00.000Z",
+    "updatedAt": "2026-06-12T00:00:00.000Z"
+  },
+  "voice": "banmai",
+  "speed": "0",
+  "characters": 16
+}
+```
 
 ## Socket.IO admin events
 

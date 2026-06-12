@@ -4,6 +4,8 @@ import { config } from '../config';
 import { GenerateTtsInput, TtsVoice } from './tts.types';
 
 const FPT_TTS_URL = 'https://api.fpt.ai/hmi/tts/v5';
+const FPT_REQUEST_TIMEOUT_MS = 15000;
+const FPT_DOWNLOAD_TIMEOUT_MS = 15000;
 
 const FPT_VOICES: TtsVoice[] = [
   { code: 'banmai', label: 'Ban Mai - Nữ miền Bắc' },
@@ -66,24 +68,31 @@ export class TtsService {
   }
 
   private async requestFptAudioUrl(text: string, voice: string, speed: string) {
-    const response = await fetch(FPT_TTS_URL, {
-      method: 'POST',
-      headers: {
-        api_key: config.fptTtsApiKey,
-        voice,
-        speed,
-        format: config.fptTtsFormat || 'mp3',
-        'Cache-Control': 'no-cache',
+    const response = await this.fetchWithBadRequest(
+      FPT_TTS_URL,
+      {
+        method: 'POST',
+        headers: {
+          api_key: config.fptTtsApiKey,
+          voice,
+          speed,
+          format: config.fptTtsFormat || 'mp3',
+          'Cache-Control': 'no-cache',
+          'Content-Type': 'text/plain; charset=utf-8',
+        },
+        body: text,
+        signal: AbortSignal.timeout(FPT_REQUEST_TIMEOUT_MS),
       },
-      body: text,
-    });
+      'Khong ket noi duoc FPT.AI TTS.',
+    );
 
     if (!response.ok) {
-      throw new BadRequestException(`FPT.AI khong phan hoi thanh cong: HTTP ${response.status}`);
+      const message = await this.readResponseMessage(response);
+      throw new BadRequestException(message || `FPT.AI khong phan hoi thanh cong: HTTP ${response.status}`);
     }
 
     const data = (await response.json()) as { async?: string; error?: number; message?: string };
-    if (data.error !== 0 || !data.async) {
+    if (Number(data.error) !== 0 || !data.async) {
       throw new BadRequestException(data.message || 'FPT.AI khong tao duoc audio.');
     }
 
@@ -94,15 +103,19 @@ export class TtsService {
     let lastMessage = '';
 
     for (let attempt = 1; attempt <= config.fptTtsPollAttempts; attempt += 1) {
-      const response = await fetch(audioUrl);
+      const response = await this.fetchWithBadRequest(
+        audioUrl,
+        { signal: AbortSignal.timeout(FPT_DOWNLOAD_TIMEOUT_MS) },
+        'Khong tai duoc file audio tu FPT.AI.',
+      );
       if (response.ok) {
         const contentType = response.headers.get('content-type') || '';
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        if (buffer.length > 0 && (contentType.includes('audio') || audioUrl.toLowerCase().endsWith('.mp3'))) {
+        if (this.isFptAudioResponse(buffer, contentType, audioUrl)) {
           return buffer;
         }
-        lastMessage = 'Link FPT.AI da phan hoi nhung chua phai file audio.';
+        lastMessage = this.readBufferMessage(buffer, contentType) || 'Link FPT.AI da phan hoi nhung chua phai file audio.';
       } else {
         lastMessage = `FPT.AI dang xu ly audio (HTTP ${response.status}).`;
       }
@@ -128,6 +141,51 @@ export class TtsService {
       .replace(/\s+/g, ' ')
       .slice(0, 80);
     return value || `tts-${Date.now()}`;
+  }
+
+  private async fetchWithBadRequest(url: string, init: RequestInit, fallbackMessage: string) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      const message = error instanceof Error && error.name === 'TimeoutError' ? `${fallbackMessage} Qua thoi gian cho.` : fallbackMessage;
+      throw new BadRequestException(message);
+    }
+  }
+
+  private async readResponseMessage(response: Response) {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const payload = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+      return payload?.message || payload?.error || '';
+    }
+
+    return response.text().catch(() => '');
+  }
+
+  private isFptAudioResponse(buffer: Buffer, contentType: string, audioUrl: string) {
+    if (buffer.length === 0) return false;
+
+    const normalizedType = contentType.toLowerCase();
+    return (
+      normalizedType.includes('audio') ||
+      normalizedType.includes('octet-stream') ||
+      audioUrl.toLowerCase().includes('.mp3') ||
+      this.isMp3Buffer(buffer)
+    );
+  }
+
+  private isMp3Buffer(buffer: Buffer) {
+    return (
+      buffer.subarray(0, 3).toString('ascii') === 'ID3' ||
+      (buffer.length >= 2 && buffer[0] === 0xff && [0xfb, 0xf3, 0xf2].includes(buffer[1]))
+    );
+  }
+
+  private readBufferMessage(buffer: Buffer, contentType: string) {
+    const normalizedType = contentType.toLowerCase();
+    if (!normalizedType.includes('json') && !normalizedType.includes('text')) return '';
+
+    return buffer.toString('utf8').slice(0, 300);
   }
 
   private delay(ms: number) {
