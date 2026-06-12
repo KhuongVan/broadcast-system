@@ -47,6 +47,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
   const [importFile, setImportFile] = useState<File | null>(null);
   const [recordingDevice, setRecordingDevice] = useState<Device | null>(null);
   const [assignedScheduleDevice, setAssignedScheduleDevice] = useState<Device | null>(null);
+  const [detailDevice, setDetailDevice] = useState<Device | null>(null);
   const [recordings, setRecordings] = useState<DeviceRecordingSession[]>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [recordingsError, setRecordingsError] = useState('');
@@ -119,8 +120,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
   }
 
   function viewDeviceDetail(device: Device) {
-    setSearch(device.macAddress || device.name);
-    onChangeSection('settings');
+    setDetailDevice(device);
   }
 
   function resetForm() {
@@ -283,7 +283,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
         device.area,
         formatLastSeenTime(device.lastSeenAt),
         device.online ? 'Kết nối' : 'Mất kết nối',
-        getConnectionTypeLabel(device.connectionType),
+        getDeviceConnectionLabel(device),
         device.networkType || '',
         getPlayStatusLabel(device),
         `${getDeviceScheduleAssignments(device).length} lịch`,
@@ -442,7 +442,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                             <td>
                               <StatusBadge tone={getPlayStatusTone(device)}>{getPlayStatusLabel(device)}</StatusBadge>
                               {!device.playAllowed ? <div className="subtext">Đang chặn phát theo lịch</div> : null}
-                              {device.playbackMessage ? <div className="subtext">{device.playbackMessage}</div> : null}
+                              {device.playbackMessage ? <div className="subtext">{formatDeviceMessage(device.playbackMessage)}</div> : null}
                             </td>
                             <td>
                               <VolumeControl device={device} disabled={saving} onChange={(volumeLevel) => void updateDeviceVolume(device.deviceId, volumeLevel)} />
@@ -452,8 +452,8 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                               {device.batteryLevel !== null ? <div className="subtext">Pin {device.batteryLevel}%</div> : null}
                             </td>
                             <td>
-                              <strong>{getConnectionTypeLabel(device.connectionType)}</strong>
-                              <div className="subtext">{device.networkType || '-'}</div>
+                              <strong>{getDeviceConnectionLabel(device)}</strong>
+                              {getDeviceConnectionDetail(device) ? <div className="subtext">{getDeviceConnectionDetail(device)}</div> : null}
                             </td>
                             <td>
                               <button className="ghost compact" onClick={() => void openRecordingModal(device)} type="button">
@@ -503,7 +503,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                   <table>
                     <thead>
                       <tr>
-                        <th>Thiết bị</th>
+                        <th>Tên thiết bị</th>
                         <th>Khu vực</th>
                         <th>Dạng kết nối</th>
                         <th>Cập nhật cuối</th>
@@ -513,12 +513,15 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                     <tbody>
                       {pagedSettingsDevices.map((device) => (
                         <tr key={device.deviceId}>
-                          <DeviceInfoCell device={device} />
+                          <DeviceNameCell device={device} />
                           <td>{device.area || '-'}</td>
-                          <td>{getConnectionTypeLabel(device.connectionType)}</td>
+                          <td>{getDeviceConnectionLabel(device)}</td>
                           <td>{formatDateTime(device.updatedAt)}</td>
                           <td>
                             <div className="row-actions">
+                              <button className="ghost" onClick={() => viewDeviceDetail(device)} type="button">
+                                Xem chi tiết
+                              </button>
                               <button className="ghost" disabled={saving} onClick={() => edit(device)} type="button">
                                 Sửa
                               </button>
@@ -617,7 +620,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                           {device.syncStatus || device.playStatus}
                         </StatusBadge>
                       </td>
-                      <td>{device.syncMessage || device.playbackMessage || formatStatus(device.playAllowed)}</td>
+                      <td>{formatDeviceMessage(device.syncMessage || device.playbackMessage || formatStatus(device.playAllowed))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -639,6 +642,11 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
             saving={saving}
             onRemove={(scheduleId) => void removeAssignedSchedule(assignedScheduleDevice, scheduleId)}
           />
+        </Modal>
+      ) : null}
+      {detailDevice ? (
+        <Modal title={`Chi tiết thiết bị: ${detailDevice.name}`} onClose={() => setDetailDevice(null)}>
+          <DeviceDetailPanel device={detailDevice} />
         </Modal>
       ) : null}
     </Panel>
@@ -744,7 +752,7 @@ function AssignedSchedulesTable({
                   {getSyncStatusLabel(assignment.syncStatus)}
                 </StatusBadge>
                 {assignment.lastSyncedAt ? <div className="subtext">{formatDateTime(assignment.lastSyncedAt)}</div> : null}
-                {assignment.syncMessage ? <div className="subtext">{assignment.syncMessage}</div> : null}
+                {assignment.syncMessage ? <div className="subtext">{formatDeviceMessage(assignment.syncMessage)}</div> : null}
               </td>
               <td>
                 <button className="danger" disabled={saving} onClick={() => onRemove(assignment.scheduleId)} type="button">
@@ -767,6 +775,7 @@ function getDeviceSearchValues(device: Device) {
     device.area,
     device.connectionType,
     getConnectionTypeLabel(device.connectionType),
+    getDeviceConnectionLabel(device),
     device.networkType,
     device.online ? 'Kết nối Đã kết nối' : 'Mất kết nối',
     getPlayStatusLabel(device),
@@ -796,6 +805,24 @@ function normalizeSearchText(value: unknown) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+}
+
+const deviceMessageLabels: Record<string, string> = {
+  'Admin da yeu cau dung ghi am truoc khi lenh bat dau duoc xu ly.': 'Admin đã yêu cầu dừng ghi âm trước khi lệnh bắt đầu được xử lý.',
+  'Android da dong bo lich.': 'Android đã đồng bộ lịch.',
+  'Android dong bo that bai.': 'Android đồng bộ thất bại.',
+  'Da co lenh am luong moi hon.': 'Đã có lệnh âm lượng mới hơn.',
+  'Da gan lich cho thiet bi.': 'Đã gán lịch cho thiết bị.',
+  'Dang cho thiet bi bat dau ghi am.': 'Đang chờ thiết bị bắt đầu ghi âm.',
+  'Dang cho thiet bi nhan lenh am luong.': 'Đang chờ thiết bị nhận lệnh âm lượng.',
+  'Dang yeu cau thiet bi dung ghi am.': 'Đang yêu cầu thiết bị dừng ghi âm.',
+  'Thiet bi ap dung am luong that bai.': 'Thiết bị áp dụng âm lượng thất bại.',
+  'Thiet bi da ap dung am luong.': 'Thiết bị đã áp dụng âm lượng.',
+  'Thiet bi dang mat ket noi.': 'Thiết bị đang mất kết nối.',
+};
+
+function formatDeviceMessage(message: string) {
+  return deviceMessageLabels[message.trim()] || message;
 }
 
 function downloadCsv(fileName: string, rows: string[][]) {
@@ -978,6 +1005,17 @@ function getConnectionTypeLabel(connectionType: Device['connectionType']) {
   return 'Chưa xác định';
 }
 
+function getDeviceConnectionLabel(device: Device) {
+  if (device.connectionType !== 'UNKNOWN') return getConnectionTypeLabel(device.connectionType);
+  return device.networkType?.trim() || getConnectionTypeLabel(device.connectionType);
+}
+
+function getDeviceConnectionDetail(device: Device) {
+  const networkType = device.networkType?.trim();
+  if (!networkType || networkType === getDeviceConnectionLabel(device)) return '';
+  return networkType;
+}
+
 function formatLastSeenTime(value: string | null) {
   if (!value) return '-';
   const date = new Date(value);
@@ -1007,7 +1045,7 @@ function VolumeControl({ device, disabled, onChange }: { device: Device; disable
         ))}
       </select>
       <StatusBadge tone={getVolumeSyncTone(device.volumeSyncStatus)}>{getVolumeSyncLabel(device.volumeSyncStatus)}</StatusBadge>
-      <div className="subtext">{device.volumeSyncMessage || actualText}</div>
+      <div className="subtext">{formatDeviceMessage(device.volumeSyncMessage || actualText)}</div>
     </div>
   );
 }
@@ -1043,6 +1081,71 @@ function DeviceNameCell({ device }: { device: Device }) {
     <td>
       <strong className="device-name-cell">{device.name}</strong>
     </td>
+  );
+}
+
+function DeviceDetailPanel({ device }: { device: Device }) {
+  const assignments = getDeviceScheduleAssignments(device);
+  const coordinates = device.latitude !== null && device.longitude !== null ? `${device.latitude}, ${device.longitude}` : 'Chưa có';
+
+  return (
+    <div className="device-detail-panel">
+      <div className="device-detail-summary">
+        <div>
+          <p className="section-kicker">Thiết bị</p>
+          <h3>{device.name}</h3>
+          <p>{device.macAddress}</p>
+        </div>
+        <div className="device-detail-badges">
+          <StatusBadge tone={device.online ? 'ok' : 'danger'}>{device.online ? 'Kết nối' : 'Mất kết nối'}</StatusBadge>
+          <StatusBadge tone={getPlayStatusTone(device)}>{getPlayStatusLabel(device)}</StatusBadge>
+        </div>
+      </div>
+
+      <div className="device-detail-grid">
+        <DetailItem label="MAC" value={device.macAddress} />
+        <DetailItem label="Số SIM" value={device.simNumber || '-'} />
+        <DetailItem label="Android ID" value={device.androidId || '-'} />
+        <DetailItem label="Khu vực" value={device.area || 'Chưa phân khu'} />
+        <DetailItem label="Dạng kết nối" value={getDeviceConnectionLabel(device)} />
+        <DetailItem label="Network" value={device.networkType || '-'} />
+        <DetailItem label="Pin" value={device.batteryLevel !== null ? `${device.batteryLevel}%` : '-'} />
+        <DetailItem label="Phiên bản app" value={device.appVersion || '-'} />
+        <DetailItem label="Tọa độ" value={coordinates} />
+        <DetailItem label="Cập nhật cuối" value={formatDateTime(device.updatedAt)} />
+        <DetailItem label="Lần online cuối" value={formatLastSeenTime(device.lastSeenAt)} />
+        <DetailItem label="Cho phép phát" value={formatStatus(device.playAllowed)} />
+        <DetailItem label="Lịch hiện tại" value={device.currentSchedule?.name || device.activeSchedule?.name || '-'} />
+        <DetailItem label="Lịch đã tải" value={`${assignments.length} lịch`} />
+        <DetailItem label="Đồng bộ lịch" value={getSyncStatusLabel(device.syncStatus)} />
+        <DetailItem label="Lần đồng bộ cuối" value={formatDateTime(device.lastSyncedAt)} />
+        <DetailItem label="Âm lượng thực tế" value={device.volumeLevel !== null ? String(device.volumeLevel) : '-'} />
+        <DetailItem label="Âm lượng mong muốn" value={device.desiredVolumeLevel !== null ? String(device.desiredVolumeLevel) : '-'} />
+        <DetailItem label="Đồng bộ âm lượng" value={getVolumeSyncLabel(device.volumeSyncStatus)} />
+        <DetailItem label="Cập nhật âm lượng" value={formatDateTime(device.volumeUpdatedAt)} />
+        <DetailItem label="Trạng thái phát" value={getPlayStatusLabel(device)} />
+        <DetailItem label="Vị trí phát" value={device.playbackPositionSeconds !== null ? `${device.playbackPositionSeconds}s` : '-'} />
+        <DetailItem label="Cập nhật phát" value={formatDateTime(device.playbackUpdatedAt)} />
+        <DetailItem label="Ngày tạo" value={formatDateTime(device.createdAt)} />
+      </div>
+
+      {device.syncMessage || device.volumeSyncMessage || device.playbackMessage ? (
+        <div className="device-detail-notes">
+          {device.syncMessage ? <DetailItem label="Thông báo đồng bộ" value={formatDeviceMessage(device.syncMessage)} /> : null}
+          {device.volumeSyncMessage ? <DetailItem label="Thông báo âm lượng" value={formatDeviceMessage(device.volumeSyncMessage)} /> : null}
+          {device.playbackMessage ? <DetailItem label="Thông báo phát" value={formatDeviceMessage(device.playbackMessage)} /> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="detail-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 

@@ -3848,6 +3848,27 @@ tbody tr:hover td {
   color: var(--muted-strong);
 }
 
+.device-operation-board {
+  align-content: start;
+  gap: 12px;
+}
+
+.device-operation-toolbar {
+  min-height: auto;
+}
+
+.device-operate-search {
+  display: block;
+}
+
+.device-operate-search .toolbar-row {
+  display: block;
+}
+
+.device-operate-search .toolbar-row input {
+  max-width: 520px;
+}
+
 .device-operation-table th,
 .device-operation-table td {
   vertical-align: middle;
@@ -3892,6 +3913,82 @@ tbody tr:hover td {
 
 .device-operation-table .volume-control select {
   width: 100%;
+}
+
+.device-detail-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.device-detail-summary {
+  align-items: flex-start;
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.1), rgba(15, 159, 110, 0.08));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.device-detail-summary h3 {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.device-detail-summary p {
+  color: var(--muted);
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.device-detail-badges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.device-detail-grid,
+.device-detail-notes {
+  display: grid;
+  gap: 10px;
+}
+
+.device-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.device-detail-notes {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.detail-item {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+}
+
+.detail-item span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-item strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 900px) {
@@ -3948,5 +4045,13 @@ tbody tr:hover td {
 
   .tts-modern-field label {
     width: auto;
+  }
+
+  .device-detail-summary {
+    flex-direction: column;
+  }
+
+  .device-detail-grid {
+    grid-template-columns: 1fr;
   }
 }
