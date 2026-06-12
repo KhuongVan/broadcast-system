@@ -80,10 +80,12 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private activeScheduleId: string | null = null;
   private activeSchedulePriority: 'NORMAL' | 'EMERGENCY' | null = null;
   private activeSchedule: BroadcastScheduleRecord | null = null;
+  private activeScheduleDeviceIds: string[] = [];
   private pausedSchedule: BroadcastScheduleRecord | null = null;
   private pausedNormalScheduleId: string | null = null;
   private scheduleStreamRestartTimer: ReturnType<typeof setTimeout> | null = null;
   private scheduleStreamRestartAttempts = 0;
+  private skippedScheduleIds = new Set<string>();
   private activeLiveTarget: ActiveLiveTarget | null = null;
   private activeEmergency: ActiveEmergencySession | null = null;
 
@@ -128,14 +130,14 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
 
     const active = this.media.getActiveStream();
-    if (active?.hlsReady && active.type !== 'MIC' && !this.activeEmergency) {
+    if (active?.hlsReady && active.type !== 'MIC' && !this.activeEmergency && !this.activeSchedule) {
       client.emit('client_update', {
         action: 'START',
         streamVersion: active.version,
       });
     }
 
-    if (this.activePlaylist?.isPlaying) {
+    if (this.activePlaylist?.isPlaying && !this.activePlaylist.scheduleId) {
       this.emitCurrentPlaylistItem(client, false);
     }
 
@@ -273,6 +275,15 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
           streamVersion: active.version,
         });
       }
+      if (active?.hlsReady && active.type !== 'MIC' && this.scheduleTargetsDevice(device.deviceId)) {
+        client.emit('client_update', {
+          action: 'START',
+          streamVersion: active.version,
+        });
+      }
+      if (this.activePlaylist?.isPlaying && this.scheduleTargetsDevice(device.deviceId)) {
+        this.emitCurrentPlaylistItem(client, false);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không đăng ký được thiết bị mô phỏng.';
       console.error(`Client registration error: ${message}`);
@@ -320,9 +331,9 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     this.pauseActivePlaylist();
     this.clearScheduleStreamRestart();
     this.media.stop('schedule_pause');
+    this.emitToActiveScheduleDevices('STOP');
+    this.emitScheduleClientUpdate({ action: 'STOP' });
     this.clearActiveSchedule();
-    this.server.emit('STOP');
-    this.server.emit('client_update', { action: 'STOP' });
     client.emit('admin_status', { status: 'PAUSED', type: 'SCHEDULE' });
     this.emitScheduleStatus();
   }
@@ -363,14 +374,14 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
     if (this.activePlaylist.singleFileId) {
       this.activePlaylist = null;
-      this.server.emit('STOP');
+      this.emitToActiveScheduleDevices('STOP');
       return;
     }
 
     this.activePlaylist.currentIndex += 1;
     if (this.activePlaylist.currentIndex >= this.activePlaylist.playlist.items.length) {
       this.activePlaylist = null;
-      this.server.emit('STOP');
+      this.emitToActiveScheduleDevices('STOP');
       return;
     }
 
@@ -412,12 +423,19 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     const fileId = this.getCurrentPlaylistFileId();
     if (!fileId) return;
 
-    target.emit('PLAY_CACHED', {
+    const payload = {
       fileId,
       resetPosition,
       startOffsetSeconds: this.getCurrentPlaylistOffsetSeconds(),
       serverTimeMs: Date.now(),
-    });
+    };
+
+    if (target === this.server && this.activePlaylist.scheduleId) {
+      this.emitToActiveScheduleDevices('PLAY_CACHED', payload);
+      return;
+    }
+
+    target.emit('PLAY_CACHED', payload);
   }
 
   private getCurrentPlaylistOffsetSeconds() {
@@ -446,32 +464,43 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private async tickSchedules() {
     const schedules = await this.schedules.listSchedules();
     const runnable = this.schedules.getRunnableSchedules(schedules);
-    const selected = this.selectSchedule(runnable);
+    const candidates = this.sortSchedules(runnable);
+    const candidateIds = new Set(candidates.map((schedule) => schedule.scheduleId));
+    for (const scheduleId of this.skippedScheduleIds) {
+      if (!candidateIds.has(scheduleId)) this.skippedScheduleIds.delete(scheduleId);
+    }
 
-    if (!selected) {
+    if (!candidates.length) {
       if (this.activeScheduleId) {
         await this.finishActiveSchedule('Het khung gio phat.');
       }
       return;
     }
 
-    if (!this.activeScheduleId && this.pausedSchedule?.scheduleId === selected.scheduleId) return;
+    for (const selected of candidates) {
+      if (!this.activeScheduleId && this.pausedSchedule?.scheduleId === selected.scheduleId) continue;
 
-    if (this.activeScheduleId === selected.scheduleId) return;
+      if (this.activeScheduleId === selected.scheduleId) return;
 
-    if (selected.priority === 'EMERGENCY' && this.activeSchedulePriority === 'NORMAL' && this.activeScheduleId) {
-      this.pausedNormalScheduleId = this.activeScheduleId;
+      if (selected.priority === 'EMERGENCY' && this.activeSchedulePriority === 'NORMAL' && this.activeScheduleId) {
+        this.pausedNormalScheduleId = this.activeScheduleId;
+      }
+
+      const started = await this.startSchedule(selected, selected.scheduleId !== this.pausedNormalScheduleId);
+      if (started) return;
     }
 
-    await this.startSchedule(selected, selected.scheduleId !== this.pausedNormalScheduleId);
+    if (this.activeScheduleId && !candidates.some((schedule) => schedule.scheduleId === this.activeScheduleId)) {
+      await this.finishActiveSchedule('Khong con lich phu hop de phat.');
+    }
   }
 
-  private selectSchedule(schedules: BroadcastScheduleRecord[]) {
+  private sortSchedules(schedules: BroadcastScheduleRecord[]) {
     return schedules
       .sort((a, b) => {
         if (a.priority !== b.priority) return a.priority === 'EMERGENCY' ? -1 : 1;
         return `${a.startDate} ${a.startTime}`.localeCompare(`${b.startDate} ${b.startTime}`);
-      })[0] || null;
+      });
   }
 
   private async startSchedule(schedule: BroadcastScheduleRecord, resetPosition = true, isRestart = false) {
@@ -479,11 +508,36 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       this.clearScheduleStreamRestart();
     }
 
+    const deviceIds = await this.storage.listScheduleAssignedDeviceIds(schedule.scheduleId);
+    if (!deviceIds.length) {
+      const message = 'Lich chua duoc gan cho thiet bi nao hoac tat ca thiet bi dang bi chan phat.';
+      if (!this.skippedScheduleIds.has(schedule.scheduleId)) {
+        await this.schedules.logScheduleRun(schedule.scheduleId, 'SKIPPED', message);
+        this.skippedScheduleIds.add(schedule.scheduleId);
+        console.log(`SCHEDULE_SKIPPED id=${schedule.scheduleId} name=${schedule.name} reason="${message}"`);
+      }
+      if (this.activeScheduleId === schedule.scheduleId) {
+        this.media.stop('schedule_no_targets');
+        this.pauseActivePlaylist();
+        this.emitToActiveScheduleDevices('STOP');
+        this.emitScheduleClientUpdate({ action: 'STOP' });
+        this.clearActiveSchedule();
+      }
+      this.emitScheduleStatus();
+      return false;
+    }
+    this.skippedScheduleIds.delete(schedule.scheduleId);
+
+    if (this.activeScheduleId && this.activeScheduleId !== schedule.scheduleId) {
+      this.emitToActiveScheduleDevices('STOP');
+      this.emitScheduleClientUpdate({ action: 'STOP' });
+    }
     this.media.stop('schedule_replace');
     this.pauseActivePlaylist();
     this.activeScheduleId = schedule.scheduleId;
     this.activeSchedulePriority = schedule.priority;
     this.activeSchedule = schedule;
+    this.activeScheduleDeviceIds = deviceIds;
 
     try {
       if (schedule.sourceType === 'RTSP') {
@@ -492,7 +546,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
             console.error(`Schedule stream restart error: ${error.message}`),
           );
         });
-        this.server.emit('client_update', { action: 'START', streamVersion: result.version });
+        this.emitScheduleClientUpdate({ action: 'START', streamVersion: result.version });
       } else {
         await this.startFileSchedule(schedule, resetPosition);
       }
@@ -503,13 +557,15 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       await this.schedules.logScheduleRun(schedule.scheduleId, 'STARTED', `Bat dau lich ${schedule.name}`);
       console.log(`SCHEDULE_STARTED id=${schedule.scheduleId} name=${schedule.name}`);
       this.emitScheduleStatus();
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Khong chay duoc lich phat.';
       await this.schedules.logScheduleRun(schedule.scheduleId, 'FAILED', message);
+      this.emitToActiveScheduleDevices('STOP');
+      this.emitScheduleClientUpdate({ action: 'STOP' });
       this.clearActiveSchedule();
-      this.server.emit('STOP');
-      this.server.emit('client_update', { action: 'STOP' });
       this.emitScheduleStatus();
+      return false;
     }
   }
 
@@ -518,7 +574,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
     const reason = `FFmpeg stopped type=${info.type} version=${info.version} code=${info.code} signal=${info.signal}`;
     console.log(`SCHEDULE_STREAM_STOPPED id=${schedule.scheduleId} name=${schedule.name} ${reason}`);
-    this.server.emit('client_update', { action: 'STOP' });
+    this.emitScheduleClientUpdate({ action: 'STOP' });
 
     if (!this.schedules.isScheduleActive(schedule)) {
       await this.finishActiveSchedule('Luong tiep song dung vi lich da het khung gio.');
@@ -528,8 +584,9 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     if (this.scheduleStreamRestartAttempts >= config.scheduleStreamRestartMaxAttempts) {
       const message = `Tiep song URL bi gian doan qua ${config.scheduleStreamRestartMaxAttempts} lan.`;
       await this.schedules.logScheduleRun(schedule.scheduleId, 'FAILED', message);
+      this.emitToActiveScheduleDevices('STOP');
+      this.emitScheduleClientUpdate({ action: 'STOP' });
       this.clearActiveSchedule();
-      this.server.emit('STOP');
       this.server.emit('admin_error', { message });
       this.emitScheduleStatus();
       return;
@@ -580,7 +637,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
         scheduleId: schedule.scheduleId,
         singleFileId: record.fileId,
       };
-      this.server.emit('PLAY_CACHED', {
+      this.emitToActiveScheduleDevices('PLAY_CACHED', {
         fileId: record.fileId,
         resetPosition,
         startOffsetSeconds: pausedOffsetSeconds,
@@ -616,11 +673,11 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       await this.schedules.logScheduleRun(scheduleId, 'FINISHED', message);
     }
 
-    this.clearActiveSchedule();
     this.media.stop('schedule_finished');
     this.pauseActivePlaylist();
-    this.server.emit('STOP');
-    this.server.emit('client_update', { action: 'STOP' });
+    this.emitToActiveScheduleDevices('STOP');
+    this.emitScheduleClientUpdate({ action: 'STOP' });
+    this.clearActiveSchedule();
     this.emitScheduleStatus();
   }
 
@@ -628,6 +685,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     this.activeScheduleId = null;
     this.activeSchedulePriority = null;
     this.activeSchedule = null;
+    this.activeScheduleDeviceIds = [];
   }
 
   private clearScheduleStreamRestart() {
@@ -676,13 +734,44 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
   }
 
+  private emitScheduleClientUpdate(payload: { action: 'START' | 'STOP'; streamVersion?: number }) {
+    for (const deviceId of this.activeScheduleDeviceIds) {
+      this.server.to(this.deviceRoom(deviceId)).emit('client_update', payload);
+    }
+  }
+
+  private emitToActiveScheduleDevices(event: 'STOP'): void;
+  private emitToActiveScheduleDevices(event: 'PLAY_CACHED', payload: {
+    fileId: string;
+    resetPosition: boolean;
+    startOffsetSeconds: number;
+    serverTimeMs: number;
+  }): void;
+  private emitToActiveScheduleDevices(
+    event: 'STOP' | 'PLAY_CACHED',
+    payload?: {
+      fileId: string;
+      resetPosition: boolean;
+      startOffsetSeconds: number;
+      serverTimeMs: number;
+    },
+  ) {
+    for (const deviceId of this.activeScheduleDeviceIds) {
+      if (payload) {
+        this.server.to(this.deviceRoom(deviceId)).emit(event, payload);
+      } else {
+        this.server.to(this.deviceRoom(deviceId)).emit(event);
+      }
+    }
+  }
+
   prepareForEmergencyPlayback() {
     this.pauseActivePlaylist();
     this.clearScheduleStreamRestart();
+    this.emitToActiveScheduleDevices('STOP');
+    this.emitScheduleClientUpdate({ action: 'STOP' });
     this.clearActiveSchedule();
     this.activeLiveTarget = null;
-    this.server.emit('STOP');
-    this.server.emit('client_update', { action: 'STOP' });
     this.emitScheduleStatus();
   }
 
@@ -691,6 +780,10 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     if (!target) return false;
     if (target.targetType === 'AREA') return this.normalizeRoomPart(target.targetArea || '') === this.normalizeRoomPart(area);
     return target.targetDeviceIds.includes(deviceId);
+  }
+
+  private scheduleTargetsDevice(deviceId: string) {
+    return Boolean(this.activeSchedule && this.activeScheduleDeviceIds.includes(deviceId));
   }
 
   private deviceRoom(deviceId: string) {

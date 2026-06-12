@@ -794,7 +794,9 @@ Request:
 
 Notes:
 
-- Hien service chi cho sync lich `sourceType=RTSP` xuong thiet bi demo.
+- Endpoint nay gan lich cho dung thiet bi trong `device_schedule_assignments`.
+- Lich phat tu dong chi phat den cac thiet bi da duoc gan lich bang endpoint nay va dang `playAllowed=true`.
+- Lich den gio nhung chua gan cho thiet bi nao se khong phat va duoc ghi log `SKIPPED`.
 - Response tra `{ device }`.
 
 ## TTS

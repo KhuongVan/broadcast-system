@@ -988,6 +988,35 @@ export class StorageService {
     return data ? this.toScheduleRecord(data as BroadcastScheduleRow) : null;
   }
 
+  async listScheduleAssignedDeviceIds(scheduleId: string) {
+    const { data: assignments, error: assignmentError } = await this.supabase
+      .from('device_schedule_assignments')
+      .select('device_id')
+      .eq('schedule_id', scheduleId);
+
+    if (assignmentError) {
+      throw new Error(`Khong doc duoc thiet bi duoc gan lich: ${assignmentError.message}`);
+    }
+
+    const deviceIds = ((assignments || []) as Pick<DeviceScheduleAssignmentRow, 'device_id'>[])
+      .map((assignment) => assignment.device_id)
+      .filter(Boolean);
+    if (!deviceIds.length) return [];
+
+    const { data: devices, error: deviceError } = await this.supabase
+      .from('devices')
+      .select('device_id')
+      .in('device_id', deviceIds)
+      .eq('play_allowed', true)
+      .is('deleted_at', null);
+
+    if (deviceError) {
+      throw new Error(`Khong loc duoc thiet bi duoc phep phat: ${deviceError.message}`);
+    }
+
+    return ((devices || []) as Pick<DeviceRow, 'device_id'>[]).map((device) => device.device_id);
+  }
+
   async createSchedule(input: Required<ScheduleInput>) {
     const { data, error } = await this.supabase
       .from('broadcast_schedules')

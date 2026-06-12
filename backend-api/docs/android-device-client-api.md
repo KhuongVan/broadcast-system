@@ -317,6 +317,8 @@ Response voi lich FILE playlist:
 
 Notes:
 
+- Backend chi tra lich da duoc admin gan cho thiet bi qua `POST /api/devices/:deviceId/sync-schedule`.
+- Lich phat tu dong tren Socket.IO cung chi phat den cac thiet bi co assignment va dang `playAllowed=true`; lich chua gan thiet bi se bi bo qua.
 - Voi `sourceType=RTSP`, app dung `schedule.rtspUrl`.
 - Voi `sourceType=FILE` va `fileMode=PLAYLIST`, app dung `playlist.items[].file.url`.
 - Voi `sourceType=FILE` va `fileMode=SINGLE_FILE`, app dung `file.url`.
