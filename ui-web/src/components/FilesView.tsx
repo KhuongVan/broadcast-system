@@ -6,12 +6,14 @@ import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { Pagination, paginate, usePagination } from './Pagination';
 import { TtsForm } from './TtsForm';
+import { useToast } from './Toast';
 
 type FilesViewProps = {
   embedded?: boolean;
 };
 
 export function FilesView({ embedded = false }: FilesViewProps) {
+  const { showToast } = useToast();
   const [files, setFiles] = useState<AudioFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -43,7 +45,9 @@ export function FilesView({ embedded = false }: FilesViewProps) {
       await adminApi.uploadFile(file);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không upload được file.');
+      const message = getErrorMessage(err, 'Không upload được file.');
+      setError(message);
+      showToast({ type: 'error', message });
     } finally {
       setUploading(false);
       event.target.value = '';
@@ -112,4 +116,8 @@ export function FilesView({ embedded = false }: FilesViewProps) {
       ) : null}
     </Panel>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
 }

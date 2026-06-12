@@ -147,6 +147,88 @@ audio {
   font-weight: 800;
 }
 
+.toast-viewport {
+  display: grid;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  width: 420px;
+  z-index: 100;
+}
+
+.toast {
+  align-items: flex-start;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(8, 11, 36, 0.18);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 14px;
+  pointer-events: auto;
+}
+
+.toast.error {
+  background: #fff1f3;
+  border-color: #ffb8c4;
+  color: #9f1239;
+}
+
+.toast.success {
+  background: #ecfdf3;
+  border-color: #b7ebc6;
+  color: #166534;
+}
+
+.toast-icon {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 900;
+  height: 22px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 22px;
+}
+
+.toast.error .toast-icon {
+  background: #ffe0e7;
+  color: #be123c;
+}
+
+.toast.success .toast-icon {
+  background: #d9fbe4;
+  color: #15803d;
+}
+
+.toast-message {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0.72;
+  padding: 0 2px;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 284px minmax(0, 1fr);
@@ -3740,6 +3822,78 @@ tbody tr:hover td {
   border-color: var(--border);
 }
 
+.device-operation-toolbar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.device-operation-toolbar .primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.device-operation-toolbar .success {
+  background: var(--success);
+  color: #fff;
+}
+
+.device-operation-toolbar .danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.selected-device-count,
+.device-operation-stats {
+  color: var(--muted-strong);
+}
+
+.device-operation-table th,
+.device-operation-table td {
+  vertical-align: middle;
+}
+
+.device-operation-table th {
+  white-space: nowrap;
+}
+
+.device-operation-table td {
+  min-height: 68px;
+}
+
+.device-operation-table .select-col {
+  text-align: center;
+}
+
+.device-operation-table .badge {
+  justify-content: center;
+  min-width: 86px;
+}
+
+.device-operation-table .compact {
+  min-height: 34px;
+  min-width: 96px;
+  padding: 7px 11px;
+}
+
+.device-name-cell {
+  color: var(--text);
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.35;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+
+.device-operation-table .volume-control {
+  max-width: 132px;
+}
+
+.device-operation-table .volume-control select {
+  width: 100%;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -3765,6 +3919,14 @@ tbody tr:hover td {
 }
 
 @media (max-width: 640px) {
+  .toast-viewport {
+    left: 12px;
+    max-width: none;
+    right: 12px;
+    top: 12px;
+    width: auto;
+  }
+
   .content {
     padding: 14px;
   }

@@ -6,6 +6,7 @@ import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { Pagination, paginate, usePagination } from './Pagination';
+import { useToast } from './Toast';
 
 type PlaylistsViewProps = {
   embedded?: boolean;
@@ -22,6 +23,7 @@ type PendingFile = {
 };
 
 export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
+  const { showToast } = useToast();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [files, setFiles] = useState<AudioFile[]>([]);
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
@@ -134,7 +136,7 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
         await load(editingPlaylist.playlistId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không lưu được danh sách phát.');
+      showError(err, 'Không lưu được danh sách phát.');
     } finally {
       setSaving(false);
     }
@@ -148,7 +150,7 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
       await adminApi.deletePlaylist(playlistId);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không xóa được danh sách phát.');
+      showError(err, 'Không xóa được danh sách phát.');
     } finally {
       setSaving(false);
     }
@@ -157,6 +159,12 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
   useEffect(() => {
     void load();
   }, []);
+
+  function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
+    const message = getErrorMessage(error, fallback);
+    setError(message);
+    showToast({ type: 'error', message });
+  }
 
   return (
     <Panel
@@ -285,4 +293,8 @@ function toPendingFile(item: PlaylistItem): PendingFile {
     playlistItemId: item.playlistItemId,
     sortOrder: item.sortOrder,
   };
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
 }

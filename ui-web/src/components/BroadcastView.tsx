@@ -8,6 +8,7 @@ import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { Pagination, paginate, usePagination } from './Pagination';
 import { StatusBadge } from './StatusBadge';
+import { useToast } from './Toast';
 
 type AdminStatus = {
   status: string;
@@ -29,6 +30,7 @@ type BroadcastViewProps = {
 };
 
 export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, onPrefillHandled }: BroadcastViewProps) {
+  const { showToast } = useToast();
   const [sessions, setSessions] = useState<LiveBroadcastSession[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [connected, setConnected] = useState(false);
@@ -79,6 +81,7 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
     socket.on('admin_error', (payload: { message?: string }) => {
       const message = payload.message || 'Socket báo lỗi.';
       setError(message);
+      showToast({ type: 'error', message });
       setBusy(false);
       void failActiveSession(message);
     });
@@ -157,7 +160,7 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
 
   function emit(event: string, payload?: unknown) {
     if (!socketRef.current?.connected) {
-      setError('Socket chưa kết nối. Kiểm tra backend hoặc đăng nhập lại.');
+      showError('Socket chưa kết nối. Kiểm tra backend hoặc đăng nhập lại.');
       return false;
     }
     setBusy(true);
@@ -172,7 +175,7 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
 
     const target = getTarget();
     if (!target) {
-      setError(targetType === 'DEVICE' ? 'Vui lòng chọn thiết bị phát.' : 'Vui lòng chọn địa bàn phát.');
+      showError(targetType === 'DEVICE' ? 'Vui lòng chọn thiết bị phát.' : 'Vui lòng chọn địa bàn phát.');
       return;
     }
 
@@ -222,8 +225,8 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
       void loadMicrophones();
     } catch (err) {
       stopTracks();
-      const message = err instanceof Error ? err.message : 'Không bắt đầu được phát trực tiếp.';
-      setError(message);
+      const message = getErrorMessage(err, 'Không bắt đầu được phát trực tiếp.');
+      showError(message);
       await failActiveSession(message);
       setBusy(false);
     }
@@ -263,7 +266,7 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
       replaceSession(data.session);
       activeSessionIdRef.current = null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không cập nhật được phiên phát.');
+      showError(err, 'Không cập nhật được phiên phát.');
     }
   }
 
@@ -288,7 +291,7 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
       replaceSession(data.session);
       if (activeSessionIdRef.current === sessionId) activeSessionIdRef.current = null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không xóa được phiên phát.');
+      showError(err, 'Không xóa được phiên phát.');
     } finally {
       setBusy(false);
     }
@@ -296,6 +299,12 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
 
   function replaceSession(session: LiveBroadcastSession) {
     setSessions((current) => current.map((item) => (item.sessionId === session.sessionId ? session : item)));
+  }
+
+  function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
+    const message = getErrorMessage(error, fallback);
+    setError(message);
+    showToast({ type: 'error', message });
   }
 
   function getTarget() {
@@ -489,6 +498,10 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
 function pickMimeType() {
   const preferred = 'audio/webm;codecs=opus';
   return MediaRecorder.isTypeSupported(preferred) ? preferred : 'audio/webm';
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
 }
 
 function statusLabel(status: LiveBroadcastSession['status']) {

@@ -8,6 +8,7 @@ import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { Pagination, paginate, usePagination } from './Pagination';
 import { StatusBadge } from './StatusBadge';
+import { useToast } from './Toast';
 
 import { DeviceMapView } from './DeviceMapView';
 
@@ -30,6 +31,7 @@ const emptyDevice: DeviceInput = {
 };
 
 export function DevicesView({ activeSection, onChangeSection, onStartEmergency, onStartLive }: DevicesViewProps) {
+  const { showToast } = useToast();
   const [devices, setDevices] = useState<Device[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [form, setForm] = useState<DeviceInput>(emptyDevice);
@@ -116,6 +118,11 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     });
   }
 
+  function viewDeviceDetail(device: Device) {
+    setSearch(device.macAddress || device.name);
+    onChangeSection('settings');
+  }
+
   function resetForm() {
     setEditingId('');
     setForm(emptyDevice);
@@ -155,7 +162,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       setModalOpen(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không lưu được thiết bị.');
+      showError(err, 'Không lưu được thiết bị.');
     } finally {
       setSaving(false);
     }
@@ -175,7 +182,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không xóa được thiết bị.');
+      showError(err, 'Không xóa được thiết bị.');
     } finally {
       setSaving(false);
     }
@@ -188,7 +195,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       await action();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thực hiện được thao tác thiết bị.');
+      showError(err, 'Không thực hiện được thao tác thiết bị.');
     } finally {
       setSaving(false);
     }
@@ -212,7 +219,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       const { device } = await adminApi.updateDeviceVolume(deviceId, volumeLevel);
       setDevices((current) => current.map((item) => (item.deviceId === device.deviceId ? device : item)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không cập nhật được âm lượng thiết bị.');
+      showError(err, 'Không cập nhật được âm lượng thiết bị.');
     } finally {
       setSaving(false);
     }
@@ -227,7 +234,9 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       const data = await adminApi.listDeviceRecordings(device.deviceId);
       setRecordings(data.recordings.filter((recording) => recording.audioUrl));
     } catch (err) {
-      setRecordingsError(err instanceof Error ? err.message : 'Không tải được file ghi âm.');
+      const message = getErrorMessage(err, 'Không tải được file ghi âm.');
+      setRecordingsError(message);
+      showToast({ type: 'error', message });
     } finally {
       setRecordingsLoading(false);
     }
@@ -251,7 +260,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       setAssignedScheduleDevice(updatedDevice);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không gỡ được lịch khỏi thiết bị.');
+      showError(err, 'Không gỡ được lịch khỏi thiết bị.');
     } finally {
       setSaving(false);
     }
@@ -292,7 +301,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
   async function importDevices(event: FormEvent) {
     event.preventDefault();
     if (!importFile) {
-      setError('Vui lòng chọn file thiết bị.');
+      showError('Vui lòng chọn file thiết bị.');
       return;
     }
     setSaving(true);
@@ -304,12 +313,18 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       await Promise.all(inputs.map((input) => adminApi.createDevice(input)));
       await load();
       closeImportModal();
-      alert(`Đã nhập ${inputs.length} thiết bị.`);
+      showToast({ type: 'success', message: `Đã nhập ${inputs.length} thiết bị.` });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không nhập được thiết bị.');
+      showError(err, 'Không nhập được thiết bị.');
     } finally {
       setSaving(false);
     }
+  }
+
+  function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
+    const message = getErrorMessage(error, fallback);
+    setError(message);
+    showToast({ type: 'error', message });
   }
 
   useEffect(() => {
@@ -395,7 +410,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                   </div>
 
                   <div className="table-wrap">
-                    <table>
+                    <table className="device-operation-table">
                       <thead>
                         <tr>
                           <th className="select-col">
@@ -405,7 +420,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                               type="checkbox"
                             />
                           </th>
-                          <th>Thông tin thiết bị</th>
+                          <th>Tên thiết bị</th>
                           <th>Thời gian</th>
                           <th>Trạng thái phát</th>
                           <th>Âm lượng</th>
@@ -413,6 +428,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                           <th>Loại kết nối</th>
                           <th>File ghi âm</th>
                           <th>Lịch đã tải</th>
+                          <th>Chi tiết</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -421,7 +437,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                             <td className="select-col">
                               <input checked={selectedDeviceIds.has(device.deviceId)} onChange={(event) => toggleDevice(device.deviceId, event.target.checked)} type="checkbox" />
                             </td>
-                            <DeviceInfoCell device={device} />
+                            <DeviceNameCell device={device} />
                             <td>{formatLastSeenTime(device.lastSeenAt)}</td>
                             <td>
                               <StatusBadge tone={getPlayStatusTone(device)}>{getPlayStatusLabel(device)}</StatusBadge>
@@ -449,7 +465,11 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                                 {getDeviceScheduleAssignments(device).length} lịch
                               </button>
                               <div className="subtext">Sync: {getSyncStatusLabel(device.syncStatus)}</div>
-                              {device.syncMessage ? <div className="subtext">{device.syncMessage}</div> : null}
+                            </td>
+                            <td>
+                              <button className="ghost compact" onClick={() => viewDeviceDetail(device)} type="button">
+                                Xem chi tiết
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -774,6 +794,10 @@ function normalizeSearchText(value: unknown) {
     .trim();
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+}
+
 function downloadCsv(fileName: string, rows: string[][]) {
   const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -1010,6 +1034,14 @@ function DeviceInfoCell({ device }: { device: Device }) {
       {device.simNumber ? <div className="subtext">SIM {device.simNumber}</div> : null}
       <div className="subtext">{device.area || 'Chưa phân khu'}</div>
       {device.appVersion ? <div className="subtext">App {device.appVersion}</div> : null}
+    </td>
+  );
+}
+
+function DeviceNameCell({ device }: { device: Device }) {
+  return (
+    <td>
+      <strong className="device-name-cell">{device.name}</strong>
     </td>
   );
 }

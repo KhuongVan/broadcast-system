@@ -3,6 +3,7 @@ import { adminApi } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import type { Device, EmergencyBroadcastSession, EmergencySource, EmergencySourceInput } from '../lib/types';
 import { Pagination, paginate, usePagination } from './Pagination';
+import { useToast } from './Toast';
 
 const DURATION_OPTIONS = [15, 30, 60] as const;
 type DurationMinutes = (typeof DURATION_OPTIONS)[number];
@@ -13,6 +14,7 @@ type EmergencyViewProps = {
 };
 
 export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyViewProps) {
+  const { showToast } = useToast();
   const [sources, setSources] = useState<EmergencySource[]>([]);
   const [sessions, setSessions] = useState<EmergencyBroadcastSession[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -121,7 +123,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
       closeSourceModal();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không lưu được nguồn phát.');
+      showError(err, 'Không lưu được nguồn phát.');
     } finally {
       setBusy(false);
     }
@@ -133,7 +135,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
       await adminApi.deleteEmergencySource(sourceId);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không xóa được nguồn phát.');
+      showError(err, 'Không xóa được nguồn phát.');
     } finally {
       setBusy(false);
     }
@@ -166,8 +168,8 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
 
   // ─── Broadcast ─────────────────────────────────────────────
   async function playSource(source: EmergencySource) {
-    if (!selectedDeviceIds.size) { setError('Vui lòng chọn ít nhất 1 thiết bị.'); return; }
-    if (activeSession) { setError('Đang có phiên phát khẩn cấp. Vui lòng dừng trước.'); return; }
+    if (!selectedDeviceIds.size) { showError('Vui lòng chọn ít nhất 1 thiết bị.'); return; }
+    if (activeSession) { showError('Đang có phiên phát khẩn cấp. Vui lòng dừng trước.'); return; }
     setBusy(true);
     setError('');
     try {
@@ -179,7 +181,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
       });
       setSessions((cur) => [data.session, ...cur]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không bắt đầu được phát khẩn cấp.');
+      showError(err, 'Không bắt đầu được phát khẩn cấp.');
     } finally {
       setBusy(false);
     }
@@ -193,7 +195,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
       const data = await adminApi.stopEmergencyBroadcast(sessionId);
       setSessions((cur) => cur.map((s) => (s.sessionId === data.session.sessionId ? data.session : s)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không dừng được phiên phát.');
+      showError(err, 'Không dừng được phiên phát.');
     } finally {
       setBusy(false);
     }
@@ -206,6 +208,12 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
         <span>Đang tải...</span>
       </div>
     );
+  }
+
+  function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
+    const message = getErrorMessage(error, fallback);
+    setError(message);
+    showToast({ type: 'error', message });
   }
 
   return (
@@ -520,4 +528,8 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
       ) : null}
     </div>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
 }

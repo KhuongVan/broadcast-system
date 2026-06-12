@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { adminApi } from '../lib/api';
 import type { AudioFile, TtsGenerateInput, TtsVoicesResponse } from '../lib/types';
 import { DataState } from './DataState';
+import { useToast } from './Toast';
 
 type TtsFormProps = {
   onGenerated?: (file: AudioFile) => void;
@@ -15,6 +16,7 @@ const initialForm: TtsGenerateInput = {
 };
 
 export function TtsForm({ onGenerated }: TtsFormProps) {
+  const { showToast } = useToast();
   const [voices, setVoices] = useState<TtsVoicesResponse | null>(null);
   const [form, setForm] = useState<TtsGenerateInput>(initialForm);
   const [latestFile, setLatestFile] = useState<AudioFile | null>(null);
@@ -58,10 +60,13 @@ export function TtsForm({ onGenerated }: TtsFormProps) {
       });
       setLatestFile(data.file);
       setMessage(`Đã tạo file ${data.file.originalName} (${data.characters} ký tự).`);
+      showToast({ type: 'success', message: `Đã tạo file ${data.file.originalName}.` });
       setForm((current) => ({ ...current, title: '', text: '' }));
       onGenerated?.(data.file);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tạo được file TTS.');
+      const errorMessage = getErrorMessage(err, 'Không tạo được file TTS.');
+      setError(errorMessage);
+      showToast({ type: 'error', message: errorMessage });
     } finally {
       setSaving(false);
     }
@@ -148,4 +153,8 @@ export function TtsForm({ onGenerated }: TtsFormProps) {
       ) : null}
     </>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
 }

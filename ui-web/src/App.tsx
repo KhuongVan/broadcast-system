@@ -11,6 +11,7 @@ import { ReportsView } from './components/ReportsView';
 import { ScheduleManagementView } from './components/ScheduleManagementView';
 import { SchedulesView } from './components/SchedulesView';
 import { Shell, type ViewKey } from './components/Shell';
+import { ToastProvider } from './components/Toast';
 import { adminApi } from './lib/api';
 import type { Session } from './lib/types';
 
@@ -71,39 +72,41 @@ function AdminApp() {
   }
 
   return (
-    <Shell activeView={activeView} session={session} onChangeView={setActiveView} onLogout={() => void logout()}>
-      {activeView === 'overview' ? <OverviewView /> : null}
-      {activeView.startsWith('devices:') ? (
-        <DevicesView
-          activeSection={getDeviceSection(activeView)}
-          onChangeSection={(section) => setActiveView(`devices:${section}`)}
-          onStartEmergency={openEmergencyForDevice}
-          onStartLive={openLiveForDevice}
-        />
-      ) : null}
-      {activeView.startsWith('schedules:') ? (
-        <ScheduleManagementView
-          activeTab={getScheduleTab(activeView)}
-          schedules={<SchedulesView embedded />}
-          playlists={<PlaylistsView embedded />}
-          files={<FilesView embedded />}
-        />
-      ) : null}
-      {activeView === 'live' ? (
-        <BroadcastView
-          openCreateOnPrefill={prefillTarget === 'live'}
-          prefillDeviceId={prefillTarget === 'live' ? prefillDeviceId : undefined}
-          onPrefillHandled={clearDevicePrefill}
-        />
-      ) : null}
-      {activeView === 'emergency' ? (
-        <EmergencyView
-          prefillDeviceId={prefillTarget === 'emergency' ? prefillDeviceId : undefined}
-          onPrefillHandled={clearDevicePrefill}
-        />
-      ) : null}
-      {activeView === 'reports' ? <ReportsView /> : null}
-    </Shell>
+    <ToastProvider>
+      <Shell activeView={activeView} session={session} onChangeView={setActiveView} onLogout={() => void logout()}>
+        {activeView === 'overview' ? <OverviewView /> : null}
+        {activeView.startsWith('devices:') ? (
+          <DevicesView
+            activeSection={getDeviceSection(activeView)}
+            onChangeSection={(section) => setActiveView(`devices:${section}`)}
+            onStartEmergency={openEmergencyForDevice}
+            onStartLive={openLiveForDevice}
+          />
+        ) : null}
+        {activeView.startsWith('schedules:') ? (
+          <ScheduleManagementView
+            activeTab={getScheduleTab(activeView)}
+            schedules={<SchedulesView embedded />}
+            playlists={<PlaylistsView embedded />}
+            files={<FilesView embedded />}
+          />
+        ) : null}
+        {activeView === 'live' ? (
+          <BroadcastView
+            openCreateOnPrefill={prefillTarget === 'live'}
+            prefillDeviceId={prefillTarget === 'live' ? prefillDeviceId : undefined}
+            onPrefillHandled={clearDevicePrefill}
+          />
+        ) : null}
+        {activeView === 'emergency' ? (
+          <EmergencyView
+            prefillDeviceId={prefillTarget === 'emergency' ? prefillDeviceId : undefined}
+            onPrefillHandled={clearDevicePrefill}
+          />
+        ) : null}
+        {activeView === 'reports' ? <ReportsView /> : null}
+      </Shell>
+    </ToastProvider>
   );
 }
 

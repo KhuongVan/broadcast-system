@@ -6,6 +6,7 @@ import { Modal } from './Modal';
 import { Panel } from './Panel';
 import { Pagination, paginate, usePagination } from './Pagination';
 import { StatusBadge } from './StatusBadge';
+import { useToast } from './Toast';
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -29,6 +30,7 @@ type SchedulesViewProps = {
 };
 
 export function SchedulesView({ embedded = false }: SchedulesViewProps) {
+  const { showToast } = useToast();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [files, setFiles] = useState<AudioFile[]>([]);
@@ -136,7 +138,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       setModalOpen(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không lưu được lịch phát.');
+      showError(err, 'Không lưu được lịch phát.');
     } finally {
       setSaving(false);
     }
@@ -151,7 +153,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       if (editingId === scheduleId) resetForm();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không xóa được lịch phát.');
+      showError(err, 'Không xóa được lịch phát.');
     } finally {
       setSaving(false);
     }
@@ -166,7 +168,9 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       const result = await adminApi.testRtsp(form.rtspUrl.trim());
       setTestResult(result.message || 'Stream URL phản hồi hợp lệ.');
     } catch (err) {
-      setTestResult(err instanceof Error ? err.message : 'Không kiểm tra được stream URL.');
+      const message = getErrorMessage(err, 'Không kiểm tra được stream URL.');
+      setTestResult(message);
+      showToast({ type: 'error', message });
     } finally {
       setSaving(false);
     }
@@ -175,6 +179,12 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   useEffect(() => {
     void load();
   }, []);
+
+  function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
+    const message = getErrorMessage(error, fallback);
+    setError(message);
+    showToast({ type: 'error', message });
+  }
 
   return (
     <Panel
@@ -370,6 +380,10 @@ function normalizeForm(form: ScheduleInput): ScheduleInput {
     fileMode: form.fileMode || 'PLAYLIST',
     fileId: form.fileMode === 'SINGLE_FILE' ? form.fileId : null,
   };
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
 }
 
 function sourceLabel(schedule: Schedule) {
