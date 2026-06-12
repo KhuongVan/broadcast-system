@@ -127,10 +127,10 @@ export class DeviceClientService {
     const payload = await this.storage.getDeviceClientSchedule(device.deviceId);
     return {
       serverTime: this.serverTime(),
-      assignment: payload.assignment,
-      schedule: payload.schedule,
-      playlist: payload.playlist,
-      file: payload.file,
+      assignments: payload.assignments,
+      schedules: payload.schedules,
+      playlistsByScheduleId: payload.playlistsByScheduleId,
+      filesByScheduleId: payload.filesByScheduleId,
     };
   }
 
@@ -162,8 +162,12 @@ export class DeviceClientService {
     const scheduleId = this.optionalText(body.scheduleId);
     const syncStatus = this.normalizeSyncStatus(body.syncStatus);
     if (!scheduleId) throw new BadRequestException('Vui long gui scheduleId.');
+    const assignedSchedules = await this.storage.getDeviceClientSchedule(device.deviceId);
+    if (!assignedSchedules.assignments.some((assignment) => assignment.scheduleId === scheduleId)) {
+      throw new BadRequestException('Lich nay chua duoc gan cho thiet bi.');
+    }
 
-    const updated = await this.storage.syncDeviceSchedule(device.deviceId, scheduleId, {
+    const updated = await this.storage.updateDeviceScheduleSyncResult(device.deviceId, scheduleId, {
       syncStatus,
       syncMessage: this.optionalText(body.syncMessage) || (syncStatus === 'SYNCED' ? 'Android da dong bo lich.' : 'Android dong bo that bai.'),
     });
@@ -461,6 +465,7 @@ export class DeviceClientService {
       playStatus: device.playStatus,
       currentSchedule: device.currentSchedule,
       activeSchedule: device.activeSchedule,
+      scheduleAssignments: device.scheduleAssignments,
       syncStatus: device.syncStatus,
       lastSyncedAt: device.lastSyncedAt,
       syncMessage: device.syncMessage,

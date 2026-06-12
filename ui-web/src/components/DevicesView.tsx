@@ -2,7 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { adminApi } from '../lib/api';
 import { formatDateTime, formatStatus } from '../lib/format';
-import type { Device, DeviceInput, DeviceRecordingSession, Schedule } from '../lib/types';
+import type { Device, DeviceInput, DeviceRecordingSession, DeviceScheduleAssignment, Schedule } from '../lib/types';
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
@@ -44,6 +44,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [recordingDevice, setRecordingDevice] = useState<Device | null>(null);
+  const [assignedScheduleDevice, setAssignedScheduleDevice] = useState<Device | null>(null);
   const [recordings, setRecordings] = useState<DeviceRecordingSession[]>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [recordingsError, setRecordingsError] = useState('');
@@ -55,8 +56,13 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     if (!keyword) return devices;
     return devices.filter((device) => getDeviceSearchValues(device).some((value) => normalizeSearchText(value).includes(keyword)));
   }, [devices, search]);
+  const operationPagination = usePagination(filteredDevices.length);
   const settingsPagination = usePagination(filteredDevices.length);
   const logsPagination = usePagination(devices.length);
+  const pagedOperationDevices = useMemo(
+    () => paginate(filteredDevices, operationPagination.page, operationPagination.pageSize),
+    [filteredDevices, operationPagination.page, operationPagination.pageSize],
+  );
   const pagedSettingsDevices = useMemo(
     () => paginate(filteredDevices, settingsPagination.page, settingsPagination.pageSize),
     [filteredDevices, settingsPagination.page, settingsPagination.pageSize],
@@ -227,6 +233,30 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     }
   }
 
+  function openAssignedSchedulesModal(device: Device) {
+    setAssignedScheduleDevice(device);
+  }
+
+  function closeAssignedSchedulesModal() {
+    setAssignedScheduleDevice(null);
+  }
+
+  async function removeAssignedSchedule(device: Device, scheduleId: string) {
+    if (!confirm('Gỡ lịch phát này khỏi thiết bị?')) return;
+    setSaving(true);
+    setError('');
+    try {
+      const { device: updatedDevice } = await adminApi.removeDeviceSchedule(device.deviceId, scheduleId);
+      setDevices((current) => current.map((item) => (item.deviceId === updatedDevice.deviceId ? updatedDevice : item)));
+      setAssignedScheduleDevice(updatedDevice);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không gỡ được lịch khỏi thiết bị.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function closeRecordingModal() {
     setRecordingDevice(null);
     setRecordings([]);
@@ -247,7 +277,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
         getConnectionTypeLabel(device.connectionType),
         device.networkType || '',
         getPlayStatusLabel(device),
-        device.activeSchedule?.name || '',
+        `${getDeviceScheduleAssignments(device).length} lịch`,
         getSyncStatusLabel(device.syncStatus),
       ]),
     ];
@@ -293,8 +323,9 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
   }, []);
 
   useEffect(() => {
+    operationPagination.setPage(1);
     settingsPagination.setPage(1);
-  }, [search, settingsPagination.setPage]);
+  }, [operationPagination.setPage, search, settingsPagination.setPage]);
 
   return (
     <Panel title="Quản lý thiết bị" description="Vận hành, cấu hình và theo dõi trạng thái thiết bị phát thanh.">
@@ -385,7 +416,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredDevices.map((device) => (
+                        {pagedOperationDevices.map((device) => (
                           <tr key={device.deviceId}>
                             <td className="select-col">
                               <input checked={selectedDeviceIds.has(device.deviceId)} onChange={(event) => toggleDevice(device.deviceId, event.target.checked)} type="checkbox" />
@@ -414,7 +445,9 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                               </button>
                             </td>
                             <td>
-                              <strong>{device.activeSchedule?.name || '-'}</strong>
+                              <button className="ghost compact" onClick={() => openAssignedSchedulesModal(device)} type="button">
+                                {getDeviceScheduleAssignments(device).length} lịch
+                              </button>
                               <div className="subtext">Sync: {getSyncStatusLabel(device.syncStatus)}</div>
                               {device.syncMessage ? <div className="subtext">{device.syncMessage}</div> : null}
                             </td>
@@ -422,6 +455,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                         ))}
                       </tbody>
                     </table>
+                    <Pagination page={operationPagination.page} pageSize={operationPagination.pageSize} totalItems={filteredDevices.length} onPageChange={operationPagination.setPage} />
                   </div>
                 </section>
               </div>
@@ -578,6 +612,15 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
           <RecordingFilesTable recordings={recordings} loading={recordingsLoading} error={recordingsError} />
         </Modal>
       ) : null}
+      {assignedScheduleDevice ? (
+        <Modal title={`Lịch đã tải trên thiết bị: ${assignedScheduleDevice.name}`} onClose={closeAssignedSchedulesModal}>
+          <AssignedSchedulesTable
+            assignments={getDeviceScheduleAssignments(assignedScheduleDevice)}
+            saving={saving}
+            onRemove={(scheduleId) => void removeAssignedSchedule(assignedScheduleDevice, scheduleId)}
+          />
+        </Modal>
+      ) : null}
     </Panel>
   );
 }
@@ -642,6 +685,60 @@ function RecordingFilesTable({ recordings, loading, error }: { recordings: Devic
   );
 }
 
+function AssignedSchedulesTable({
+  assignments,
+  saving,
+  onRemove,
+}: {
+  assignments: DeviceScheduleAssignment[];
+  saving: boolean;
+  onRemove: (scheduleId: string) => void;
+}) {
+  if (!assignments.length) return <div className="state compact">Thiết bị chưa có lịch phát nào.</div>;
+
+  return (
+    <div className="table-wrap assigned-schedules-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Tên lịch</th>
+            <th>Thời gian</th>
+            <th>Lặp</th>
+            <th>Nguồn</th>
+            <th>Đồng bộ</th>
+            <th>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody>
+          {assignments.map((assignment) => (
+            <tr key={assignment.assignmentId}>
+              <td>
+                <strong>{assignment.schedule.name}</strong>
+                <div className="subtext">{assignment.schedule.priority === 'EMERGENCY' ? 'Ưu tiên khẩn cấp' : 'Ưu tiên thường'}</div>
+              </td>
+              <td>{formatScheduleWindow(assignment.schedule)}</td>
+              <td>{repeatLabel(assignment.schedule.repeatType)}</td>
+              <td>{getScheduleSourceLabel(assignment.schedule)}</td>
+              <td>
+                <StatusBadge tone={assignment.syncStatus === 'FAILED' ? 'danger' : assignment.syncStatus === 'SYNCED' ? 'ok' : 'warn'}>
+                  {getSyncStatusLabel(assignment.syncStatus)}
+                </StatusBadge>
+                {assignment.lastSyncedAt ? <div className="subtext">{formatDateTime(assignment.lastSyncedAt)}</div> : null}
+                {assignment.syncMessage ? <div className="subtext">{assignment.syncMessage}</div> : null}
+              </td>
+              <td>
+                <button className="danger" disabled={saving} onClick={() => onRemove(assignment.scheduleId)} type="button">
+                  Gỡ
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function getDeviceSearchValues(device: Device) {
   return [
     device.name,
@@ -653,9 +750,13 @@ function getDeviceSearchValues(device: Device) {
     device.networkType,
     device.online ? 'Kết nối Đã kết nối' : 'Mất kết nối',
     getPlayStatusLabel(device),
-    device.activeSchedule?.name,
+    ...getDeviceScheduleAssignments(device).map((assignment) => assignment.schedule.name),
     device.currentSchedule?.name,
   ];
+}
+
+function getDeviceScheduleAssignments(device: Device) {
+  return device.scheduleAssignments || [];
 }
 
 function getRecordingFileName(recording: DeviceRecordingSession) {
@@ -815,6 +916,15 @@ function formatScheduleWindow(schedule: Schedule) {
 function getScheduleSourceLabel(schedule: Schedule) {
   if (schedule.sourceType === 'RTSP') return 'RTSP/HLS';
   return schedule.fileMode === 'SINGLE_FILE' ? 'File' : 'Danh sách phát';
+}
+
+function repeatLabel(value: Schedule['repeatType']) {
+  return {
+    ONCE: 'Một lần',
+    DAILY: 'Hằng ngày',
+    WEEKLY: 'Hằng tuần',
+    MONTHLY: 'Hằng tháng',
+  }[value];
 }
 
 function getPlayStatusLabel(device: Device) {

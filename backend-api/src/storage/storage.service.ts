@@ -9,6 +9,7 @@ import {
   DeviceConnectionType,
   DeviceInput,
   DevicePlayStatus,
+  DeviceScheduleAssignmentRecord,
   DeviceRecord,
   DeviceSyncStatus,
   DeviceVolumeSyncStatus,
@@ -220,14 +221,16 @@ type EmergencyBroadcastSessionRow = {
 };
 
 export type DeviceClientSchedulePayload = {
-  assignment: {
+  assignments: Array<{
+    assignmentId: string;
+    scheduleId: string;
     syncStatus: DeviceSyncStatus;
     lastSyncedAt: string | null;
     syncMessage: string | null;
-  } | null;
-  schedule: BroadcastScheduleRecord | null;
-  playlist: PlaylistRecord | null;
-  file: AudioFileRecord | null;
+  }>;
+  schedules: BroadcastScheduleRecord[];
+  playlistsByScheduleId: Record<string, PlaylistRecord | null>;
+  filesByScheduleId: Record<string, AudioFileRecord | null>;
 };
 
 export type DeviceMicTestUploadRecord = {
@@ -1671,6 +1674,13 @@ export class StorageService {
     scheduleId: string,
     result: { syncStatus: DeviceSyncStatus; syncMessage: string },
   ) {
+    const existing = await this.getDeviceAssignment(deviceId, scheduleId);
+    if (existing) {
+      const device = await this.getDevice(deviceId);
+      if (!device) throw new Error('Khong tim thay thiet bi sau khi dong bo.');
+      return device;
+    }
+
     const now = new Date().toISOString();
     const { error } = await this.supabase.from('device_schedule_assignments').upsert(
       {
@@ -1681,7 +1691,7 @@ export class StorageService {
         last_synced_at: result.syncStatus === 'SYNCED' ? now : null,
         updated_at: now,
       },
-      { onConflict: 'device_id' },
+      { onConflict: 'device_id,schedule_id' },
     );
 
     if (error) {
@@ -1693,42 +1703,79 @@ export class StorageService {
     return device;
   }
 
+  async removeDeviceSchedule(deviceId: string, scheduleId: string) {
+    const { error } = await this.supabase
+      .from('device_schedule_assignments')
+      .delete()
+      .eq('device_id', deviceId)
+      .eq('schedule_id', scheduleId);
+
+    if (error) {
+      throw new Error(`Khong go duoc lich khoi thiet bi: ${error.message}`);
+    }
+
+    const device = await this.getDevice(deviceId);
+    if (!device) throw new Error('Khong tim thay thiet bi sau khi go lich.');
+    return device;
+  }
+
+  async updateDeviceScheduleSyncResult(
+    deviceId: string,
+    scheduleId: string,
+    result: { syncStatus: DeviceSyncStatus; syncMessage: string },
+  ) {
+    const existing = await this.getDeviceAssignment(deviceId, scheduleId);
+    if (!existing) {
+      throw new Error('Khong tim thay lich da gan cho thiet bi.');
+    }
+
+    const now = new Date().toISOString();
+    const { error } = await this.supabase
+      .from('device_schedule_assignments')
+      .update({
+        sync_status: result.syncStatus,
+        sync_message: result.syncMessage,
+        last_synced_at: result.syncStatus === 'SYNCED' ? now : null,
+        updated_at: now,
+      })
+      .eq('device_id', deviceId)
+      .eq('schedule_id', scheduleId);
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc ket qua dong bo lich: ${error.message}`);
+    }
+
+    const device = await this.getDevice(deviceId);
+    if (!device) throw new Error('Khong tim thay thiet bi sau khi cap nhat dong bo.');
+    return device;
+  }
+
   async getDeviceClientSchedule(deviceId: string): Promise<DeviceClientSchedulePayload> {
-    const assignment = await this.getDeviceAssignment(deviceId);
-    if (!assignment) {
-      return { assignment: null, schedule: null, playlist: null, file: null };
-    }
+    const assignmentRecords = await this.listDeviceScheduleAssignments(deviceId);
+    const schedules = assignmentRecords.map((assignment) => assignment.schedule);
+    const playlistsByScheduleId: Record<string, PlaylistRecord | null> = {};
+    const filesByScheduleId: Record<string, AudioFileRecord | null> = {};
 
-    const schedule = await this.getSchedule(assignment.schedule_id);
-    if (!schedule) {
-      return {
-        assignment: {
-          syncStatus: assignment.sync_status,
-          lastSyncedAt: assignment.last_synced_at,
-          syncMessage: assignment.sync_message,
-        },
-        schedule: null,
-        playlist: null,
-        file: null,
-      };
+    for (const schedule of schedules) {
+      playlistsByScheduleId[schedule.scheduleId] = schedule.sourceType === 'FILE' && schedule.playlistId
+        ? await this.getPlaylist(schedule.playlistId)
+        : null;
+      filesByScheduleId[schedule.scheduleId] = schedule.sourceType === 'FILE' && schedule.fileId
+        ? await this.getFile(schedule.fileId)
+        : null;
     }
-
-    const playlist = schedule.sourceType === 'FILE' && schedule.playlistId
-      ? await this.getPlaylist(schedule.playlistId)
-      : null;
-    const file = schedule.sourceType === 'FILE' && schedule.fileId
-      ? await this.getFile(schedule.fileId)
-      : null;
 
     return {
-      assignment: {
-        syncStatus: assignment.sync_status,
-        lastSyncedAt: assignment.last_synced_at,
-        syncMessage: assignment.sync_message,
-      },
-      schedule,
-      playlist,
-      file,
+      assignments: assignmentRecords.map((assignment) => ({
+        assignmentId: assignment.assignmentId,
+        scheduleId: assignment.scheduleId,
+        syncStatus: assignment.syncStatus,
+        lastSyncedAt: assignment.lastSyncedAt,
+        syncMessage: assignment.syncMessage,
+      })),
+      schedules,
+      playlistsByScheduleId,
+      filesByScheduleId,
     };
   }
 
@@ -1852,8 +1899,9 @@ export class StorageService {
   }
 
   private async toDeviceRecord(row: DeviceRow): Promise<DeviceRecord> {
-    const assignment = await this.getDeviceAssignment(row.device_id);
-    const activeSchedule = assignment ? await this.getSchedule(assignment.schedule_id) : null;
+    const scheduleAssignments = await this.listDeviceScheduleAssignments(row.device_id);
+    const activeAssignment = scheduleAssignments[0] || null;
+    const activeSchedule = activeAssignment?.schedule || null;
     const currentSchedule = row.current_schedule_id ? await this.getSchedule(row.current_schedule_id) : null;
 
     return {
@@ -1868,11 +1916,12 @@ export class StorageService {
       lastSeenAt: row.last_seen_at,
       playAllowed: row.play_allowed,
       activeSchedule,
+      scheduleAssignments,
       currentSchedule,
       playStatus: row.play_status || 'IDLE',
-      syncStatus: assignment?.sync_status || null,
-      lastSyncedAt: assignment?.last_synced_at || null,
-      syncMessage: assignment?.sync_message || null,
+      syncStatus: activeAssignment?.syncStatus || null,
+      lastSyncedAt: activeAssignment?.lastSyncedAt || null,
+      syncMessage: activeAssignment?.syncMessage || null,
       appVersion: row.app_version || null,
       networkType: row.network_type || null,
       batteryLevel: row.battery_level ?? null,
@@ -1891,11 +1940,28 @@ export class StorageService {
     };
   }
 
-  private async getDeviceAssignment(deviceId: string) {
+  async listDeviceScheduleAssignments(deviceId: string): Promise<DeviceScheduleAssignmentRecord[]> {
     const { data, error } = await this.supabase
       .from('device_schedule_assignments')
       .select('*')
       .eq('device_id', deviceId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Khong doc duoc device_schedule_assignments: ${error.message}`);
+    }
+
+    const assignments = (data || []) as DeviceScheduleAssignmentRow[];
+    const records = await Promise.all(assignments.map((row) => this.toDeviceScheduleAssignmentRecord(row)));
+    return records.filter((record): record is DeviceScheduleAssignmentRecord => Boolean(record));
+  }
+
+  private async getDeviceAssignment(deviceId: string, scheduleId: string) {
+    const { data, error } = await this.supabase
+      .from('device_schedule_assignments')
+      .select('*')
+      .eq('device_id', deviceId)
+      .eq('schedule_id', scheduleId)
       .maybeSingle();
 
     if (error) {
@@ -1903,6 +1969,22 @@ export class StorageService {
     }
 
     return data ? (data as DeviceScheduleAssignmentRow) : null;
+  }
+
+  private async toDeviceScheduleAssignmentRecord(row: DeviceScheduleAssignmentRow): Promise<DeviceScheduleAssignmentRecord | null> {
+    const schedule = await this.getSchedule(row.schedule_id);
+    if (!schedule) return null;
+    return {
+      assignmentId: row.assignment_id,
+      deviceId: row.device_id,
+      scheduleId: row.schedule_id,
+      syncStatus: row.sync_status,
+      lastSyncedAt: row.last_synced_at,
+      syncMessage: row.sync_message,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      schedule,
+    };
   }
 
   private isDuplicateDeviceMacError(error: { code?: string; message?: string; details?: string }) {

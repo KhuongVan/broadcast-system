@@ -43,6 +43,11 @@ export class DevicesController {
     return { device: await this.devices.updateVolume(deviceId, body.volumeLevel) };
   }
 
+  @Delete('/api/devices/:deviceId/schedules/:scheduleId')
+  async removeSchedule(@Param('deviceId') deviceId: string, @Param('scheduleId') scheduleId: string) {
+    return { device: await this.devices.removeScheduleFromDevice(deviceId, scheduleId) };
+  }
+
   @Get('/api/devices/:deviceId/recordings')
   async listRecordings(@Param('deviceId') deviceId: string) {
     return { recordings: await this.devices.listRecordings(deviceId) };

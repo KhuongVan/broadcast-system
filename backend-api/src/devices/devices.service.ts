@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BroadcastScheduleRecord } from '../schedules/schedule.types';
 import { StorageService } from '../storage/storage.service';
 import { DeviceInput } from './device.types';
 
@@ -101,11 +102,62 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     const device = await this.getDevice(deviceId);
     const schedule = await this.storage.getSchedule(scheduleId);
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
+    await this.ensureScheduleDoesNotConflict(device.deviceId, schedule);
 
     return this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
       syncStatus: device.online ? 'SYNCED' : 'FAILED',
       syncMessage: device.online ? 'Da gan lich cho thiet bi.' : 'Thiet bi dang mat ket noi.',
     });
+  }
+
+  async removeScheduleFromDevice(deviceId: string, scheduleId: string) {
+    await this.getDevice(deviceId);
+    const schedule = await this.storage.getSchedule(scheduleId);
+    if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
+    return this.storage.removeDeviceSchedule(deviceId, schedule.scheduleId);
+  }
+
+  private async ensureScheduleDoesNotConflict(deviceId: string, schedule: BroadcastScheduleRecord) {
+    if (!schedule.enabled) return;
+    const assignments = await this.storage.listDeviceScheduleAssignments(deviceId);
+    const conflict = assignments
+      .map((assignment) => assignment.schedule)
+      .find((assignedSchedule) =>
+        assignedSchedule.scheduleId !== schedule.scheduleId &&
+        assignedSchedule.enabled &&
+        this.schedulesConflict(schedule, assignedSchedule),
+      );
+
+    if (conflict) {
+      throw new ConflictException(`Lịch "${schedule.name}" bị trùng thời gian với "${conflict.name}" trên thiết bị này.`);
+    }
+  }
+
+  private schedulesConflict(a: BroadcastScheduleRecord, b: BroadcastScheduleRecord) {
+    if (!this.timeWindowsOverlap(a, b)) return false;
+    if (a.repeatType === 'DAILY' || b.repeatType === 'DAILY') return true;
+    if (a.repeatType === 'WEEKLY' && b.repeatType === 'MONTHLY') return true;
+    if (a.repeatType === 'MONTHLY' && b.repeatType === 'WEEKLY') return true;
+    if (a.repeatType === 'ONCE' && b.repeatType === 'ONCE') return a.startDate === b.startDate;
+    if (a.repeatType === 'WEEKLY' && b.repeatType === 'WEEKLY') return this.getWeekday(a.startDate) === this.getWeekday(b.startDate);
+    if (a.repeatType === 'MONTHLY' && b.repeatType === 'MONTHLY') return this.getMonthDay(a.startDate) === this.getMonthDay(b.startDate);
+    if (a.repeatType === 'ONCE' && b.repeatType === 'WEEKLY') return this.getWeekday(a.startDate) === this.getWeekday(b.startDate);
+    if (a.repeatType === 'WEEKLY' && b.repeatType === 'ONCE') return this.getWeekday(a.startDate) === this.getWeekday(b.startDate);
+    if (a.repeatType === 'ONCE' && b.repeatType === 'MONTHLY') return this.getMonthDay(a.startDate) === this.getMonthDay(b.startDate);
+    if (a.repeatType === 'MONTHLY' && b.repeatType === 'ONCE') return this.getMonthDay(a.startDate) === this.getMonthDay(b.startDate);
+    return false;
+  }
+
+  private timeWindowsOverlap(a: BroadcastScheduleRecord, b: BroadcastScheduleRecord) {
+    return a.startTime < b.endTime && b.startTime < a.endTime;
+  }
+
+  private getWeekday(date: string) {
+    return new Date(`${date}T00:00:00Z`).getUTCDay();
+  }
+
+  private getMonthDay(date: string) {
+    return Number(date.slice(8, 10));
   }
 
   private normalizeInput(input: Partial<DeviceInput>): DeviceInput {

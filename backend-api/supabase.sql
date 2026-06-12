@@ -385,9 +385,16 @@ create table if not exists device_schedule_assignments (
   last_synced_at timestamptz,
   sync_message text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint device_schedule_assignments_device_unique unique (device_id)
+  updated_at timestamptz not null default now()
 );
+
+alter table device_schedule_assignments
+drop constraint if exists device_schedule_assignments_device_unique;
+
+drop index if exists device_schedule_assignments_device_unique;
+
+create unique index if not exists idx_device_schedule_assignments_device_schedule_unique
+on device_schedule_assignments(device_id, schedule_id);
 
 create index if not exists idx_device_schedule_assignments_schedule_id
 on device_schedule_assignments(schedule_id);
@@ -451,7 +458,7 @@ insert into device_schedule_assignments (device_id, schedule_id, sync_status, la
 values
   ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'SYNCED', now() - interval '1 hour', 'Da tai lich xuong thiet bi demo.'),
   ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'FAILED', null, 'Thiet bi dang mat ket noi.')
-on conflict (device_id) do nothing;
+on conflict (device_id, schedule_id) do nothing;
 
 alter table devices
 add column if not exists sim_number text;

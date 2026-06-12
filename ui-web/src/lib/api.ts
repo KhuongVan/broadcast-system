@@ -169,6 +169,10 @@ export const adminApi = {
       method: 'POST',
       json: { scheduleId },
     }),
+  removeDeviceSchedule: (deviceId: string, scheduleId: string) =>
+    api<{ device: Device }>(`/api/devices/${deviceId}/schedules/${scheduleId}`, {
+      method: 'DELETE',
+    }),
   listLiveBroadcasts: () => api<{ sessions: LiveBroadcastSession[] }>('/api/live-broadcasts'),
   createLiveBroadcast: (input: LiveBroadcastCreateInput) =>
     api<{ session: LiveBroadcastSession }>('/api/live-broadcasts', {

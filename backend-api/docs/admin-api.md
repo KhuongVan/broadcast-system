@@ -566,6 +566,7 @@ Response:
       "lastSeenAt": "2026-06-05T03:00:00.000Z",
       "playAllowed": true,
       "activeSchedule": null,
+      "scheduleAssignments": [],
       "currentSchedule": null,
       "playStatus": "IDLE",
       "syncStatus": null,
@@ -795,9 +796,19 @@ Request:
 Notes:
 
 - Endpoint nay gan lich cho dung thiet bi trong `device_schedule_assignments`.
+- Mot thiet bi co the duoc gan nhieu lich; backend khong tao trung cap `(deviceId, scheduleId)`.
+- Backend chan gan lich `enabled=true` neu bi trung khung gio voi lich dang bat da gan cho thiet bi.
 - Lich phat tu dong chi phat den cac thiet bi da duoc gan lich bang endpoint nay va dang `playAllowed=true`.
 - Lich den gio nhung chua gan cho thiet bi nao se khong phat va duoc ghi log `SKIPPED`.
 - Response tra `{ device }`.
+
+### Remove schedule from device
+
+```http
+DELETE /api/devices/:deviceId/schedules/:scheduleId
+```
+
+Response tra `{ device }`.
 
 ## TTS
 

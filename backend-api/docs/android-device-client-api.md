@@ -216,7 +216,7 @@ Loi thuong gap:
 
 ### Get schedule
 
-Lay lich da sync/gan cho thiet bi trong `device_schedule_assignments`.
+Lay cac lich da sync/gan cho thiet bi trong `device_schedule_assignments`.
 
 ```http
 GET /api/device-client/schedule
@@ -228,100 +228,60 @@ Response khi chua co lich:
 ```json
 {
   "serverTime": "2026-06-05T03:01:10.000Z",
-  "assignment": null,
-  "schedule": null,
-  "playlist": null,
-  "file": null
+  "assignments": [],
+  "schedules": [],
+  "playlistsByScheduleId": {},
+  "filesByScheduleId": {}
 }
 ```
 
-Response voi lich RTSP/HTTP:
+Response khi co nhieu lich:
 
 ```json
 {
   "serverTime": "2026-06-05T03:01:10.000Z",
-  "assignment": {
-    "syncStatus": "SYNCED",
-    "lastSyncedAt": "2026-06-05T03:00:00.000Z",
-    "syncMessage": "Da tai lich xuong thiet bi demo."
+  "assignments": [
+    {
+      "assignmentId": "aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa",
+      "scheduleId": "33333333-3333-3333-3333-333333333333",
+      "syncStatus": "SYNCED",
+      "lastSyncedAt": "2026-06-05T03:00:00.000Z",
+      "syncMessage": "Downloaded schedule"
+    }
+  ],
+  "schedules": [
+    {
+      "scheduleId": "33333333-3333-3333-3333-333333333333",
+      "name": "Tiếp sóng URL",
+      "sourceType": "RTSP",
+      "priority": "NORMAL",
+      "playlistId": null,
+      "fileId": null,
+      "fileMode": null,
+      "rtspUrl": "https://example.com/live/index.m3u8",
+      "startDate": "2026-06-05",
+      "startTime": "06:00",
+      "endTime": "06:30",
+      "repeatType": "DAILY",
+      "enabled": true
+    }
+  ],
+  "playlistsByScheduleId": {
+    "33333333-3333-3333-3333-333333333333": null
   },
-  "schedule": {
-    "scheduleId": "33333333-3333-3333-3333-333333333333",
-    "name": "Tiếp sóng URL",
-    "sourceType": "RTSP",
-    "priority": "NORMAL",
-    "playlistId": null,
-    "fileId": null,
-    "fileMode": null,
-    "rtspUrl": "https://example.com/live/index.m3u8",
-    "startDate": "2026-06-05",
-    "startTime": "06:00",
-    "endTime": "06:30",
-    "repeatType": "DAILY",
-    "enabled": true
+  "filesByScheduleId": {
+    "33333333-3333-3333-3333-333333333333": null
   },
-  "playlist": null,
-  "file": null
-}
-```
-
-Response voi lich FILE playlist:
-
-```json
-{
-  "serverTime": "2026-06-05T03:01:10.000Z",
-  "assignment": {
-    "syncStatus": "SYNCED",
-    "lastSyncedAt": "2026-06-05T03:00:00.000Z",
-    "syncMessage": "Android da dong bo lich."
-  },
-  "schedule": {
-    "scheduleId": "44444444-4444-4444-4444-444444444444",
-    "name": "Phát file buổi sáng",
-    "sourceType": "FILE",
-    "priority": "NORMAL",
-    "playlistId": "55555555-5555-5555-5555-555555555555",
-    "fileId": null,
-    "fileMode": "PLAYLIST",
-    "rtspUrl": null,
-    "startDate": "2026-06-05",
-    "startTime": "06:00",
-    "endTime": "06:30",
-    "repeatType": "DAILY",
-    "enabled": true
-  },
-  "playlist": {
-    "playlistId": "55555555-5555-5555-5555-555555555555",
-    "name": "Danh sách phát sáng",
-    "totalFiles": 1,
-    "totalSize": 1234567,
-    "items": [
-      {
-        "playlistItemId": "66666666-6666-6666-6666-666666666666",
-        "playlistId": "55555555-5555-5555-5555-555555555555",
-        "fileId": "77777777-7777-7777-7777-777777777777",
-        "sortOrder": 0,
-        "file": {
-          "fileId": "77777777-7777-7777-7777-777777777777",
-          "originalName": "ban-tin.mp3",
-          "size": 1234567,
-          "mimetype": "audio/mpeg",
-          "url": "https://signed-url.example.com/audio.mp3"
-        }
-      }
-    ]
-  },
-  "file": null
 }
 ```
 
 Notes:
 
-- Backend chi tra lich da duoc admin gan cho thiet bi qua `POST /api/devices/:deviceId/sync-schedule`.
+- Backend chi tra cac lich da duoc admin gan cho thiet bi qua `POST /api/devices/:deviceId/sync-schedule`.
 - Lich phat tu dong tren Socket.IO cung chi phat den cac thiet bi co assignment va dang `playAllowed=true`; lich chua gan thiet bi se bi bo qua.
 - Voi `sourceType=RTSP`, app dung `schedule.rtspUrl`.
-- Voi `sourceType=FILE` va `fileMode=PLAYLIST`, app dung `playlist.items[].file.url`.
-- Voi `sourceType=FILE` va `fileMode=SINGLE_FILE`, app dung `file.url`.
+- Voi `sourceType=FILE` va `fileMode=PLAYLIST`, app lay playlist tai `playlistsByScheduleId[scheduleId]`.
+- Voi `sourceType=FILE` va `fileMode=SINGLE_FILE`, app lay file tai `filesByScheduleId[scheduleId]`.
 - Cac `url` la signed URL, co thoi han theo backend config `SIGNED_URL_TTL_SECONDS`.
 
 cURL:

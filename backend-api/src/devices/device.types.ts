@@ -5,6 +5,18 @@ export type DeviceSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
 export type DevicePlayStatus = 'IDLE' | 'PLAYING' | 'STOPPED' | 'ERROR';
 export type DeviceVolumeSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
 
+export type DeviceScheduleAssignmentRecord = {
+  assignmentId: string;
+  deviceId: string;
+  scheduleId: string;
+  syncStatus: DeviceSyncStatus;
+  lastSyncedAt: string | null;
+  syncMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  schedule: BroadcastScheduleRecord;
+};
+
 export type DeviceRecord = {
   deviceId: string;
   name: string;
@@ -17,6 +29,7 @@ export type DeviceRecord = {
   lastSeenAt: string | null;
   playAllowed: boolean;
   activeSchedule: BroadcastScheduleRecord | null;
+  scheduleAssignments: DeviceScheduleAssignmentRecord[];
   currentSchedule: BroadcastScheduleRecord | null;
   playStatus: DevicePlayStatus;
   syncStatus: DeviceSyncStatus | null;

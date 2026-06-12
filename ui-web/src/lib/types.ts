@@ -93,6 +93,7 @@ export type Device = {
   lastSeenAt: string | null;
   playAllowed: boolean;
   activeSchedule: Schedule | null;
+  scheduleAssignments: DeviceScheduleAssignment[];
   currentSchedule: Schedule | null;
   playStatus: 'IDLE' | 'PLAYING' | 'STOPPED' | 'ERROR';
   syncStatus: 'PENDING' | 'SYNCED' | 'FAILED' | null;
@@ -113,6 +114,18 @@ export type Device = {
   longitude: number | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type DeviceScheduleAssignment = {
+  assignmentId: string;
+  deviceId: string;
+  scheduleId: string;
+  syncStatus: 'PENDING' | 'SYNCED' | 'FAILED';
+  lastSyncedAt: string | null;
+  syncMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  schedule: Schedule;
 };
 
 export type DeviceRecordingStatus = 'REQUESTED' | 'RECORDING' | 'STOP_REQUESTED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
