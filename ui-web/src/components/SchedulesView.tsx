@@ -41,12 +41,18 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [testResult, setTestResult] = useState('');
+  const [search, setSearch] = useState('');
 
   const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
-  const schedulePagination = usePagination(schedules.length);
+  const filteredSchedules = useMemo(() => {
+    const keyword = normalizeSearchText(search);
+    if (!keyword) return schedules;
+    return schedules.filter((schedule) => normalizeSearchText(schedule.name).includes(keyword));
+  }, [schedules, search]);
+  const schedulePagination = usePagination(filteredSchedules.length);
   const pagedSchedules = useMemo(
-    () => paginate(schedules, schedulePagination.page, schedulePagination.pageSize),
-    [schedulePagination.page, schedulePagination.pageSize, schedules],
+    () => paginate(filteredSchedules, schedulePagination.page, schedulePagination.pageSize),
+    [filteredSchedules, schedulePagination.page, schedulePagination.pageSize],
   );
 
   async function load() {
@@ -180,6 +186,10 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     void load();
   }, []);
 
+  useEffect(() => {
+    schedulePagination.setPage(1);
+  }, [schedulePagination.setPage, search]);
+
   function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
     const message = getErrorMessage(error, fallback);
     setError(message);
@@ -199,6 +209,20 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       <DataState loading={loading} error={error} empty={!schedules.length && !playlists.length && !files.length} emptyText="Chưa có dữ liệu lịch phát." />
       {!loading ? (
         <>
+          {schedules.length ? (
+            <div className="section-toolbar search-only">
+              <div className="toolbar-row">
+                <input
+                  aria-label="Tìm theo tên lịch phát"
+                  placeholder="Tìm theo tên lịch phát..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+            </div>
+          ) : null}
+          {schedules.length && !filteredSchedules.length ? <div className="state">Không tìm thấy lịch phát phù hợp.</div> : null}
+          {filteredSchedules.length ? (
           <div className="table-wrap">
             <table>
               <thead>
@@ -242,8 +266,9 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                 ))}
               </tbody>
             </table>
-            <Pagination page={schedulePagination.page} pageSize={schedulePagination.pageSize} totalItems={schedules.length} onPageChange={schedulePagination.setPage} />
+            <Pagination page={schedulePagination.page} pageSize={schedulePagination.pageSize} totalItems={filteredSchedules.length} onPageChange={schedulePagination.setPage} />
           </div>
+          ) : null}
           {modalOpen ? (
             <Modal title={editingId ? 'Sửa lịch phát' : 'Tạo lịch phát'} onClose={closeModal}>
               <form className="form-panel" onSubmit={save}>
@@ -384,6 +409,14 @@ function normalizeForm(form: ScheduleInput): ScheduleInput {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 function sourceLabel(schedule: Schedule) {

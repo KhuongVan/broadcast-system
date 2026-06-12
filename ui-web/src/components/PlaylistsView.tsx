@@ -35,15 +35,21 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   const totalSelectedSize = useMemo(
     () => selectedFiles.reduce((total, file) => total + file.size, 0),
     [selectedFiles],
   );
-  const playlistPagination = usePagination(playlists.length);
+  const filteredPlaylists = useMemo(() => {
+    const keyword = normalizeSearchText(search);
+    if (!keyword) return playlists;
+    return playlists.filter((playlist) => normalizeSearchText(playlist.name).includes(keyword));
+  }, [playlists, search]);
+  const playlistPagination = usePagination(filteredPlaylists.length);
   const pagedPlaylists = useMemo(
-    () => paginate(playlists, playlistPagination.page, playlistPagination.pageSize),
-    [playlistPagination.page, playlistPagination.pageSize, playlists],
+    () => paginate(filteredPlaylists, playlistPagination.page, playlistPagination.pageSize),
+    [filteredPlaylists, playlistPagination.page, playlistPagination.pageSize],
   );
 
   async function load(preferredId?: string) {
@@ -160,6 +166,10 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
     void load();
   }, []);
 
+  useEffect(() => {
+    playlistPagination.setPage(1);
+  }, [playlistPagination.setPage, search]);
+
   function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
     const message = getErrorMessage(error, fallback);
     setError(message);
@@ -179,6 +189,20 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
       <DataState loading={loading} error={error} empty={!playlists.length} emptyText="Chưa có danh sách phát." />
       {!loading ? (
         <div className="playlist-page">
+          {playlists.length ? (
+            <div className="section-toolbar search-only">
+              <div className="toolbar-row">
+                <input
+                  aria-label="Tìm theo tên danh sách phát"
+                  placeholder="Tìm theo tên danh sách phát..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+            </div>
+          ) : null}
+          {playlists.length && !filteredPlaylists.length ? <div className="state">Không tìm thấy danh sách phát phù hợp.</div> : null}
+          {filteredPlaylists.length ? (
           <div className="table-wrap">
             <table className="playlist-table">
               <thead>
@@ -213,8 +237,9 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
                 ))}
               </tbody>
             </table>
-            <Pagination page={playlistPagination.page} pageSize={playlistPagination.pageSize} totalItems={playlists.length} onPageChange={playlistPagination.setPage} />
+            <Pagination page={playlistPagination.page} pageSize={playlistPagination.pageSize} totalItems={filteredPlaylists.length} onPageChange={playlistPagination.setPage} />
           </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -297,4 +322,12 @@ function toPendingFile(item: PlaylistItem): PendingFile {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }

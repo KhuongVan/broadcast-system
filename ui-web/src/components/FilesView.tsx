@@ -19,8 +19,14 @@ export function FilesView({ embedded = false }: FilesViewProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [ttsModalOpen, setTtsModalOpen] = useState(false);
-  const filePagination = usePagination(files.length);
-  const pagedFiles = useMemo(() => paginate(files, filePagination.page, filePagination.pageSize), [filePagination.page, filePagination.pageSize, files]);
+  const [search, setSearch] = useState('');
+  const filteredFiles = useMemo(() => {
+    const keyword = normalizeSearchText(search);
+    if (!keyword) return files;
+    return files.filter((file) => normalizeSearchText(file.originalName).includes(keyword));
+  }, [files, search]);
+  const filePagination = usePagination(filteredFiles.length);
+  const pagedFiles = useMemo(() => paginate(filteredFiles, filePagination.page, filePagination.pageSize), [filePagination.page, filePagination.pageSize, filteredFiles]);
 
   async function load() {
     setLoading(true);
@@ -58,6 +64,10 @@ export function FilesView({ embedded = false }: FilesViewProps) {
     void load();
   }, []);
 
+  useEffect(() => {
+    filePagination.setPage(1);
+  }, [filePagination.setPage, search]);
+
   return (
     <Panel
       title={embedded ? 'Kho âm thanh' : 'Kho âm thanh'}
@@ -82,7 +92,20 @@ export function FilesView({ embedded = false }: FilesViewProps) {
       {loading ? <div className="state">Đang tải dữ liệu...</div> : null}
       {error ? <div className="state error">{error}</div> : null}
       {!loading && !error && !files.length ? <div className="state">Chưa có file âm thanh.</div> : null}
-      {!loading && files.length ? (
+      {!loading && !error && files.length ? (
+        <div className="section-toolbar search-only">
+          <div className="toolbar-row">
+            <input
+              aria-label="Tìm theo tên file âm thanh"
+              placeholder="Tìm theo tên file âm thanh..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+        </div>
+      ) : null}
+      {!loading && !error && files.length && !filteredFiles.length ? <div className="state">Không tìm thấy file âm thanh phù hợp.</div> : null}
+      {!loading && filteredFiles.length ? (
         <div className="table-wrap">
           <table>
             <thead>
@@ -111,7 +134,7 @@ export function FilesView({ embedded = false }: FilesViewProps) {
               ))}
             </tbody>
           </table>
-          <Pagination page={filePagination.page} pageSize={filePagination.pageSize} totalItems={files.length} onPageChange={filePagination.setPage} />
+          <Pagination page={filePagination.page} pageSize={filePagination.pageSize} totalItems={filteredFiles.length} onPageChange={filePagination.setPage} />
         </div>
       ) : null}
     </Panel>
@@ -120,4 +143,12 @@ export function FilesView({ embedded = false }: FilesViewProps) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }

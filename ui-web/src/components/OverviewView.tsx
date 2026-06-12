@@ -132,7 +132,7 @@ export function OverviewView() {
               <div className="summary-list">
                 <SummaryItem label="Lịch đang phát" value={scheduleStatus.activeSchedule?.name || 'Không có'} />
                 <SummaryItem label="Lịch tạm dừng" value={scheduleStatus.pausedSchedule?.name || 'Không có'} />
-                <SummaryItem label="Nguồn đang phát" value={scheduleStatus.activeSchedule?.sourceType || '--'} />
+                <SummaryItem label="Nguồn đang phát" value={getActiveSourceLabel(scheduleStatus.activeSchedule?.sourceType)} />
               </div>
             </Panel>
             <Panel title="Thiết bị cần chú ý" description="Các thiết bị offline hoặc đang báo lỗi phát.">
@@ -174,4 +174,10 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function getActiveSourceLabel(sourceType: Schedule['sourceType'] | undefined) {
+  if (!sourceType) return 'Không có nguồn đang phát';
+  if (sourceType === 'RTSP') return 'RTSP/HLS';
+  return 'File/Playlist';
 }
