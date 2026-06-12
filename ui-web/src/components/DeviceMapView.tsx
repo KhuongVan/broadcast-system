@@ -42,9 +42,11 @@ type DeviceMapViewProps = {
   stats: { total: number; online: number; offline: number; playing: number };
   search: string;
   onSearchChange: (value: string) => void;
+  onStartEmergency: (deviceId: string) => void;
+  onStartLive: (deviceId: string) => void;
 };
 
-export function DeviceMapView({ devices, stats, search, onSearchChange }: DeviceMapViewProps) {
+export function DeviceMapView({ devices, stats, search, onSearchChange, onStartEmergency, onStartLive }: DeviceMapViewProps) {
   const [activeDevice, setActiveDevice] = useState<Device | null>(null);
   
   const groupedDevices = useMemo(() => {
@@ -157,6 +159,26 @@ export function DeviceMapView({ devices, stats, search, onSearchChange }: Device
                         {device.batteryLevel !== null && (
                           <div className="popup-row"><span className="label">Pin:</span> <span className="value">{device.batteryLevel}%</span></div>
                         )}
+                        <div className="popup-actions">
+                          <button
+                            aria-label={`Phát khẩn cấp tới ${device.name}`}
+                            className="popup-action emergency"
+                            onClick={() => onStartEmergency(device.deviceId)}
+                            title="Phát khẩn cấp"
+                            type="button"
+                          >
+                            <span>⚠</span> Phát khẩn cấp
+                          </button>
+                          <button
+                            aria-label={`Phát trực tiếp tới ${device.name}`}
+                            className="popup-action live"
+                            onClick={() => onStartLive(device.deviceId)}
+                            title="Phát trực tiếp"
+                            type="button"
+                          >
+                            <span>●</span> Phát trực tiếp
+                          </button>
+                        </div>
                       </div>
                     </Popup>
                   </Marker>

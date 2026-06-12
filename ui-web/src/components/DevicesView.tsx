@@ -15,6 +15,8 @@ export type DeviceSectionKey = 'map' | 'operate' | 'settings' | 'logs';
 type DevicesViewProps = {
   activeSection: DeviceSectionKey;
   onChangeSection: (section: DeviceSectionKey) => void;
+  onStartEmergency: (deviceId: string) => void;
+  onStartLive: (deviceId: string) => void;
 };
 
 const emptyDevice: DeviceInput = {
@@ -26,7 +28,7 @@ const emptyDevice: DeviceInput = {
   longitude: null,
 };
 
-export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps) {
+export function DevicesView({ activeSection, onChangeSection, onStartEmergency, onStartLive }: DevicesViewProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [form, setForm] = useState<DeviceInput>(emptyDevice);
@@ -285,7 +287,14 @@ export function DevicesView({ activeSection, onChangeSection }: DevicesViewProps
       {!loading ? (
         <div className="device-page">
           {activeSection === 'map' ? (
-            <DeviceMapView devices={filteredDevices} stats={visibleStats} search={search} onSearchChange={setSearch} />
+            <DeviceMapView
+              devices={filteredDevices}
+              stats={visibleStats}
+              search={search}
+              onSearchChange={setSearch}
+              onStartEmergency={onStartEmergency}
+              onStartLive={onStartLive}
+            />
           ) : null}
 
           {activeSection === 'operate' ? (

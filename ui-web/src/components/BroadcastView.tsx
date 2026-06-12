@@ -21,7 +21,13 @@ type MicOption = {
 
 const defaultMic: MicOption = { deviceId: 'default', label: 'Micro mặc định' };
 
-export function BroadcastView() {
+type BroadcastViewProps = {
+  prefillDeviceId?: string;
+  openCreateOnPrefill?: boolean;
+  onPrefillHandled?: () => void;
+};
+
+export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, onPrefillHandled }: BroadcastViewProps) {
   const [sessions, setSessions] = useState<LiveBroadcastSession[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [connected, setConnected] = useState(false);
@@ -91,6 +97,19 @@ export function BroadcastView() {
   useEffect(() => {
     if (!targetDeviceId && devices[0]) setTargetDeviceId(devices[0].deviceId);
   }, [devices, targetDeviceId]);
+
+  useEffect(() => {
+    if (!prefillDeviceId || loading) return;
+    const device = devices.find((item) => item.deviceId === prefillDeviceId);
+    if (device) {
+      setTargetType('DEVICE');
+      setTargetDeviceId(device.deviceId);
+      if (openCreateOnPrefill && !activeSession) {
+        setModalOpen(true);
+      }
+    }
+    onPrefillHandled?.();
+  }, [activeSession, devices, loading, onPrefillHandled, openCreateOnPrefill, prefillDeviceId]);
 
   async function load() {
     setLoading(true);

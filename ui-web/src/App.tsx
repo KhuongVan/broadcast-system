@@ -26,6 +26,8 @@ function AdminApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>('overview');
   const [loading, setLoading] = useState(true);
+  const [prefillDeviceId, setPrefillDeviceId] = useState('');
+  const [prefillTarget, setPrefillTarget] = useState<'emergency' | 'live' | null>(null);
 
   async function refreshSession() {
     const data = await adminApi.me();
@@ -35,6 +37,23 @@ function AdminApp() {
   async function logout() {
     await adminApi.logout();
     setSession(null);
+  }
+
+  function openEmergencyForDevice(deviceId: string) {
+    setPrefillDeviceId(deviceId);
+    setPrefillTarget('emergency');
+    setActiveView('emergency');
+  }
+
+  function openLiveForDevice(deviceId: string) {
+    setPrefillDeviceId(deviceId);
+    setPrefillTarget('live');
+    setActiveView('live');
+  }
+
+  function clearDevicePrefill() {
+    setPrefillDeviceId('');
+    setPrefillTarget(null);
   }
 
   useEffect(() => {
@@ -55,7 +74,12 @@ function AdminApp() {
     <Shell activeView={activeView} session={session} onChangeView={setActiveView} onLogout={() => void logout()}>
       {activeView === 'overview' ? <OverviewView /> : null}
       {activeView.startsWith('devices:') ? (
-        <DevicesView activeSection={getDeviceSection(activeView)} onChangeSection={(section) => setActiveView(`devices:${section}`)} />
+        <DevicesView
+          activeSection={getDeviceSection(activeView)}
+          onChangeSection={(section) => setActiveView(`devices:${section}`)}
+          onStartEmergency={openEmergencyForDevice}
+          onStartLive={openLiveForDevice}
+        />
       ) : null}
       {activeView.startsWith('schedules:') ? (
         <ScheduleManagementView
@@ -65,8 +89,19 @@ function AdminApp() {
           files={<FilesView embedded />}
         />
       ) : null}
-      {activeView === 'live' ? <BroadcastView /> : null}
-      {activeView === 'emergency' ? <EmergencyView /> : null}
+      {activeView === 'live' ? (
+        <BroadcastView
+          openCreateOnPrefill={prefillTarget === 'live'}
+          prefillDeviceId={prefillTarget === 'live' ? prefillDeviceId : undefined}
+          onPrefillHandled={clearDevicePrefill}
+        />
+      ) : null}
+      {activeView === 'emergency' ? (
+        <EmergencyView
+          prefillDeviceId={prefillTarget === 'emergency' ? prefillDeviceId : undefined}
+          onPrefillHandled={clearDevicePrefill}
+        />
+      ) : null}
       {activeView === 'reports' ? <ReportsView /> : null}
     </Shell>
   );

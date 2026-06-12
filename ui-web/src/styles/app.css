@@ -1611,6 +1611,7 @@ audio {
 }
 
 .device-map-popup .popup-content {
+  min-width: 260px;
   padding: 12px 16px;
 }
 
@@ -1638,6 +1639,60 @@ audio {
 .device-map-popup .status-playing { color: #34d399; }
 .device-map-popup .status-online { color: #60a5fa; }
 .device-map-popup .status-offline { color: #f87171; }
+
+.device-map-popup .popup-actions {
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.device-map-popup .popup-action {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 7px;
+  color: #f8fafc;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 9px;
+  white-space: nowrap;
+}
+
+.device-map-popup .popup-action:hover {
+  border-color: rgba(248, 250, 252, 0.7);
+  transform: translateY(-1px);
+}
+
+.device-map-popup .popup-action.emergency {
+  background: rgba(185, 28, 28, 0.92);
+}
+
+.device-map-popup .popup-action.live {
+  background: rgba(37, 99, 235, 0.92);
+}
+
+.device-map-popup .popup-action span {
+  line-height: 1;
+}
+
+@media (max-width: 560px) {
+  .device-map-popup .popup-content {
+    min-width: 220px;
+  }
+
+  .device-map-popup .popup-actions {
+    grid-template-columns: 1fr;
+  }
+}
 
 @media (max-width: 900px) {
   .device-map-page {

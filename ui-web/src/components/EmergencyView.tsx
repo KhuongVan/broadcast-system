@@ -6,7 +6,12 @@ import type { Device, EmergencyBroadcastSession, EmergencySource, EmergencySourc
 const DURATION_OPTIONS = [15, 30, 60] as const;
 type DurationMinutes = (typeof DURATION_OPTIONS)[number];
 
-export function EmergencyView() {
+type EmergencyViewProps = {
+  prefillDeviceId?: string;
+  onPrefillHandled?: () => void;
+};
+
+export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyViewProps) {
   const [sources, setSources] = useState<EmergencySource[]>([]);
   const [sessions, setSessions] = useState<EmergencyBroadcastSession[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -60,6 +65,20 @@ export function EmergencyView() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    if (!prefillDeviceId || loading) return;
+    const deviceExists = devices.some((device) => device.deviceId === prefillDeviceId);
+    if (deviceExists) {
+      setSelectedDeviceIds((current) => {
+        if (current.has(prefillDeviceId)) return current;
+        const next = new Set(current);
+        next.add(prefillDeviceId);
+        return next;
+      });
+    }
+    onPrefillHandled?.();
+  }, [devices, loading, onPrefillHandled, prefillDeviceId]);
 
   // ─── Source CRUD ───────────────────────────────────────────
   function openCreateSource() {
