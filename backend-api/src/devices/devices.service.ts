@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
 import { DeviceInput } from './device.types';
 
@@ -33,12 +33,16 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return device;
   }
 
-  createDevice(input: Partial<DeviceInput>) {
-    return this.storage.createDevice(this.normalizeInput(input));
+  async createDevice(input: Partial<DeviceInput>) {
+    const normalized = this.normalizeInput(input);
+    await this.ensureMacAddressAvailable(normalized.macAddress);
+    return this.storage.createDevice(normalized);
   }
 
-  updateDevice(deviceId: string, input: Partial<DeviceInput>) {
-    return this.storage.updateDevice(deviceId, this.normalizeInput(input));
+  async updateDevice(deviceId: string, input: Partial<DeviceInput>) {
+    const normalized = this.normalizeInput(input);
+    await this.ensureMacAddressAvailable(normalized.macAddress, deviceId);
+    return this.storage.updateDevice(deviceId, normalized);
   }
 
   softDeleteDevice(deviceId: string) {
@@ -128,6 +132,13 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Am luong phai la so nguyen tu 0 den 15.');
     }
     return volumeLevel;
+  }
+
+  private async ensureMacAddressAvailable(macAddress: string, currentDeviceId?: string) {
+    const existing = await this.storage.findDeviceForClientRegistration({ macAddress });
+    if (existing && existing.deviceId !== currentDeviceId) {
+      throw new ConflictException(`Địa chỉ MAC ${macAddress} đã tồn tại. Vui lòng nhập MAC khác.`);
+    }
   }
 
   private markStaleDevicesOffline() {

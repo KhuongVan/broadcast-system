@@ -258,7 +258,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     setError('');
     try {
       const rows = await readDeviceImportRows(importFile);
-      const inputs = rows.map(toDeviceInputFromCsv).filter((input): input is DeviceInput => Boolean(input));
+      const inputs = toDeviceInputsFromImportRows(rows);
       if (!inputs.length) throw new Error('File nhập không có thiết bị hợp lệ.');
       await Promise.all(inputs.map((input) => adminApi.createDevice(input)));
       await load();
@@ -676,7 +676,7 @@ async function readDeviceImportRows(file: File) {
     const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) return [];
-    return XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[firstSheetName], {
+    return XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], {
       header: 1,
       blankrows: false,
       defval: '',
@@ -720,21 +720,40 @@ function parseCsv(content: string) {
   return rows;
 }
 
-function toDeviceInputFromCsv(row: string[], index: number, rows: string[][]): DeviceInput | null {
-  const header = index === 0 ? row.map(normalizeCsvHeader) : rows[0]?.map(normalizeCsvHeader) || [];
-  if (index === 0 && header.some((value) => ['name', 'tenthietbi', 'mac', 'macaddress'].includes(value))) return null;
+function toDeviceInputsFromImportRows(rows: unknown[][]) {
+  const firstRow = rows[0] || [];
+  const header = firstRow.map(normalizeCsvHeader);
+  const hasHeader = header.some((value) => isNameHeader(value) || isMacHeader(value));
+  const dataRows = hasHeader ? rows.slice(1) : rows;
 
+  if (hasHeader && (!header.some(isNameHeader) || !header.some(isMacHeader))) {
+    throw new Error('File nhập không đúng cấu trúc: thiếu cột Tên thiết bị hoặc MAC.');
+  }
+
+  return dataRows.reduce<DeviceInput[]>((inputs, row, index) => {
+    if (isImportRowEmpty(row)) return inputs;
+    const lineNumber = index + (hasHeader ? 2 : 1);
+    inputs.push(toDeviceInputFromImportRow(row, header, hasHeader, lineNumber));
+    return inputs;
+  }, []);
+}
+
+function toDeviceInputFromImportRow(row: unknown[], header: string[], hasHeader: boolean, lineNumber: number): DeviceInput {
   const valueByHeader = (names: string[]) => {
+    if (!hasHeader) return '';
     const columnIndex = header.findIndex((value) => names.includes(value));
-    return columnIndex >= 0 ? row[columnIndex]?.trim() || '' : '';
+    return columnIndex >= 0 ? normalizeImportCell(row[columnIndex]) : '';
   };
 
-  const name = valueByHeader(['name', 'tenthietbi']) || row[0]?.trim() || '';
-  const macAddress = valueByHeader(['mac', 'macaddress', 'diachimac']) || row[1]?.trim() || '';
-  const simNumber = valueByHeader(['sim', 'sosim', 'simnumber']) || row[2]?.trim() || '';
-  const area = valueByHeader(['area', 'khuvuc']) || row[3]?.trim() || '';
+  const name = valueByHeader(nameHeaders) || normalizeImportCell(row[0]);
+  const macAddress = valueByHeader(macHeaders) || normalizeImportCell(row[1]);
+  const simNumber = valueByHeader(['sim', 'sosim', 'simnumber']) || normalizeImportCell(row[2]);
+  const area = valueByHeader(['area', 'khuvuc']) || normalizeImportCell(row[3]);
 
-  if (!name || !macAddress) return null;
+  if (!name || !macAddress) {
+    throw new Error(`File nhập không đúng cấu trúc: dòng ${lineNumber} thiếu Tên thiết bị hoặc MAC.`);
+  }
+
   return {
     name,
     macAddress,
@@ -745,8 +764,27 @@ function toDeviceInputFromCsv(row: string[], index: number, rows: string[][]): D
   };
 }
 
-function normalizeCsvHeader(value: string) {
-  return value
+const nameHeaders = ['name', 'devicename', 'tenthietbi'];
+const macHeaders = ['mac', 'macaddress', 'diachimac'];
+
+function isNameHeader(value: string) {
+  return nameHeaders.includes(value);
+}
+
+function isMacHeader(value: string) {
+  return macHeaders.includes(value);
+}
+
+function isImportRowEmpty(row: unknown[]) {
+  return !row.some((value) => normalizeImportCell(value));
+}
+
+function normalizeImportCell(value: unknown) {
+  return String(value ?? '').trim();
+}
+
+function normalizeCsvHeader(value: unknown) {
+  return normalizeImportCell(value)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]/g, '')

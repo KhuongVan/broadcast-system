@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
@@ -1197,6 +1197,9 @@ export class StorageService {
       .maybeSingle();
 
     if (error) {
+      if (this.isDuplicateDeviceMacError(error)) {
+        throw new ConflictException(`Địa chỉ MAC ${input.macAddress} đã tồn tại. Vui lòng nhập MAC khác.`);
+      }
       throw new Error(`Khong tao duoc thiet bi: ${error.message}`);
     }
 
@@ -1233,6 +1236,9 @@ export class StorageService {
       .maybeSingle();
 
     if (error) {
+      if (this.isDuplicateDeviceMacError(error)) {
+        throw new ConflictException(`Địa chỉ MAC ${input.macAddress} đã tồn tại. Vui lòng nhập MAC khác.`);
+      }
       throw new Error(`Khong tao duoc thiet bi Android: ${error.message}`);
     }
 
@@ -1312,6 +1318,9 @@ export class StorageService {
       .maybeSingle();
 
     if (error) {
+      if (this.isDuplicateDeviceMacError(error)) {
+        throw new ConflictException(`Địa chỉ MAC ${input.macAddress} đã tồn tại. Vui lòng nhập MAC khác.`);
+      }
       throw new Error(`Khong cap nhat duoc thiet bi: ${error.message}`);
     }
 
@@ -1865,6 +1874,14 @@ export class StorageService {
     }
 
     return data ? (data as DeviceScheduleAssignmentRow) : null;
+  }
+
+  private isDuplicateDeviceMacError(error: { code?: string; message?: string; details?: string }) {
+    const text = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+    return (
+      error.code === '23505' &&
+      (text.includes('mac_address') || text.includes('idx_devices_mac_address_active_unique') || text.includes('devices_mac_address_key'))
+    );
   }
 
   private toDeviceCommandRecord(row: DeviceCommandRow): DeviceCommandRecord {
