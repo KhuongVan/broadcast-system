@@ -4055,3 +4055,249 @@ tbody tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+/* HG brand theme: gold and charcoal */
+:root {
+  --bg: #f7f5ef;
+  --surface: #fffdf7;
+  --surface-soft: #faf6ea;
+  --surface-tint: #fff4cf;
+  --border: #e4dcc8;
+  --border-strong: #cfc3a7;
+  --text: #171717;
+  --muted: #746b5c;
+  --muted-strong: #463f33;
+  --primary: #c9971a;
+  --primary-strong: #8f6810;
+  --primary-soft: #fff0bc;
+  --warning: #b7791f;
+  --warning-soft: #fff3c4;
+  --sidebar: #121212;
+  --sidebar-muted: #c4b89e;
+  --sidebar-active: #c9971a;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(201, 151, 26, 0.16), transparent 34rem),
+    linear-gradient(180deg, #fffdf7 0%, var(--bg) 42rem);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline-color: rgba(201, 151, 26, 0.28);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(201, 151, 26, 0.72);
+  box-shadow: 0 0 0 4px rgba(201, 151, 26, 0.16);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: #f1eadb;
+}
+
+th,
+.playlist-table th,
+.live-table th,
+.em-table th {
+  background: #f3eddf;
+}
+
+td {
+  border-top-color: #eee5d3;
+}
+
+tbody tr:hover td {
+  background: #fff9e8;
+}
+
+.sidebar {
+  background:
+    linear-gradient(180deg, rgba(201, 151, 26, 0.22), transparent 24rem),
+    var(--sidebar);
+}
+
+.brand-mark {
+  background: linear-gradient(145deg, #fff4bc, #c9971a 56%, #6f5010);
+  color: #171717;
+}
+
+.nav-btn {
+  color: #f3ead3;
+}
+
+.nav-btn.active {
+  background: linear-gradient(135deg, #d8ad33, #9d7414);
+  border-color: rgba(255, 232, 151, 0.42);
+  box-shadow: 0 10px 28px rgba(201, 151, 26, 0.25);
+  color: #171717;
+}
+
+.nav-btn.active .nav-icon {
+  background: rgba(23, 23, 23, 0.16);
+  color: #171717;
+}
+
+.nav-subbtn {
+  color: #d5cab3;
+}
+
+.nav-subbtn.active {
+  background: rgba(201, 151, 26, 0.16);
+  box-shadow: inset 3px 0 0 #d8ad33;
+  color: #fff7dc;
+}
+
+.nav-subicon {
+  color: #d8ad33;
+}
+
+.topbar {
+  background: rgba(255, 253, 247, 0.86);
+  border-bottom-color: rgba(207, 195, 167, 0.74);
+}
+
+.avatar,
+.badge.neutral {
+  background: var(--primary-soft);
+}
+
+.primary,
+.file-input,
+.em-add-btn,
+.em-save-btn,
+.tab-btn.active,
+.subtab.active,
+.em-selected-count,
+.em-checkbox.checked,
+.em-duration-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #171717;
+}
+
+.primary:hover:not(:disabled),
+.em-add-btn:hover:not(:disabled),
+.em-save-btn:hover:not(:disabled) {
+  background: var(--primary-strong);
+  color: #fff8df;
+}
+
+.ghost,
+.em-cancel-btn {
+  background: #f0eadc;
+}
+
+.ghost:hover:not(:disabled),
+.em-cancel-btn:hover:not(:disabled) {
+  background: #e4dcc8;
+}
+
+.link-button {
+  color: var(--primary-strong);
+}
+
+.hero-panel,
+.tab-hero {
+  background:
+    linear-gradient(135deg, rgba(201, 151, 26, 0.16), rgba(23, 23, 23, 0.05)),
+    var(--surface);
+}
+
+.metric-card.blue::before {
+  background: var(--primary);
+}
+
+.metric-card.orange::before {
+  background: #d8ad33;
+}
+
+.device-operation-toolbar,
+.device-command-panel {
+  background: linear-gradient(135deg, #171717, #4a3b1a);
+}
+
+.device-operation-toolbar {
+  background: var(--surface);
+}
+
+.selected-row td,
+.schedule-list-item.active {
+  background: #fff3c4 !important;
+}
+
+.login-screen,
+.boot-screen {
+  background:
+    radial-gradient(circle at top left, rgba(201, 151, 26, 0.22), transparent 28rem),
+    linear-gradient(135deg, #fffdf7, #f4ecd7);
+}
+
+.stat-item.online .dot,
+.status-dot.online,
+.marker-blue .marker-pin {
+  background: var(--primary);
+}
+
+.device-list-item.active {
+  background: var(--primary-soft);
+  border-left-color: var(--primary);
+}
+
+.device-map-container {
+  background: #ede6d6;
+}
+
+.tts-modern-info {
+  background: var(--primary-soft);
+  border-color: #e4c35d;
+  color: var(--primary-strong);
+}
+
+.device-detail-summary {
+  background: linear-gradient(135deg, rgba(201, 151, 26, 0.16), rgba(23, 23, 23, 0.05));
+}
+
+.brand-logo-mark {
+  background: rgba(255, 253, 247, 0.94);
+  flex-basis: 52px;
+  height: 40px;
+  padding: 5px;
+  width: 52px;
+}
+
+.brand-logo-mark img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.login-brand-lockup {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.login-brand-lockup img {
+  background: rgba(255, 253, 247, 0.9);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: block;
+  height: 46px;
+  object-fit: contain;
+  padding: 5px 7px;
+  width: 82px;
+}
+
+.login-brand-lockup .login-brand {
+  margin: 0;
+}

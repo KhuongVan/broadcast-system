@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import hgLogo from '../assets/hg-logo-transparent.png';
 import type { Session } from '../lib/types';
 
 export type ViewKey =
@@ -100,7 +101,9 @@ export function Shell({ activeView, children, session, onChangeView, onLogout }:
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <div className="brand-mark">BS</div>
+          <div className="brand-mark brand-logo-mark">
+            <img alt="HG" src={hgLogo} />
+          </div>
           <div>
             <div className="brand">Phát thanh nhanh</div>
             <div className="brand-subtitle">Broadcast Admin</div>

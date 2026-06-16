@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import hgLogo from '../assets/hg-logo-transparent.png';
 import { adminApi } from '../lib/api';
 
 type LoginPageProps = {
@@ -29,7 +30,10 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   return (
     <main className="login-screen">
       <form className="login-panel" onSubmit={handleSubmit}>
-        <p className="login-brand">Phát thanh nhanh</p>
+        <div className="login-brand-lockup">
+          <img alt="HG" src={hgLogo} />
+          <p className="login-brand">Phát thanh nhanh</p>
+        </div>
         <h1>Đăng nhập quản trị</h1>
         <label>
           Tên đăng nhập
