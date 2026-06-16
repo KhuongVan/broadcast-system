@@ -50,6 +50,8 @@ add constraint device_commands_type_check
     'SET_VOLUME',
     'START_RECORDING',
     'STOP_RECORDING',
+    'PLAY_SCHEDULE',
+    'STOP_PLAYBACK',
     'PLAY_EMERGENCY',
     'STOP_EMERGENCY'
   ));

@@ -541,7 +541,7 @@ Notes:
 
 ### Get commands
 
-Poll lenh tu backend. Neu admin chua gui lenh moi, endpoint tra `NOOP`. Cac lenh hien co gom `SET_VOLUME`, `START_RECORDING`, va `STOP_RECORDING`.
+Poll lenh tu backend. Neu admin chua gui lenh moi, endpoint tra `NOOP`. Cac lenh hien co gom `SET_VOLUME`, `START_RECORDING`, `STOP_RECORDING`, `PLAY_SCHEDULE`, `STOP_PLAYBACK`, `PLAY_EMERGENCY`, va `STOP_EMERGENCY`.
 
 ```http
 GET /api/device-client/commands
@@ -613,6 +613,8 @@ Response voi lenh dung ghi am:
 Notes:
 
 - `SET_VOLUME.payload.volumeLevel` la so nguyen tu `0` den `15`.
+- `PLAY_SCHEDULE.payload.scheduleId` la lich can phat ngay; `sourceType` giup app chon player phu hop. Android nen goi `GET /api/device-client/schedule` neu can lay chi tiet RTSP/file/playlist moi nhat, bat dau phat, goi `POST /api/device-client/playback-state` voi `PLAYING`, roi goi `POST /api/device-client/command-result`.
+- `STOP_PLAYBACK` yeu cau Android dung player hien tai, goi `POST /api/device-client/playback-state` voi `STOPPED`, roi goi `POST /api/device-client/command-result`.
 - Khi nhan `START_RECORDING`, Android bat dau ghi am tu mic va goi `POST /api/device-client/recording-status` voi `RECORDING`.
 - Khi nhan `STOP_RECORDING` hoac den `maxDurationSeconds`, Android dung ghi, bao `UPLOADING`, roi upload file bang `mic-test-upload` kem `recordingId`.
 - Sau khi ap dung lenh vao thiet bi that, Android phai goi `POST /api/device-client/command-result`.
@@ -753,7 +755,7 @@ Mot so response co `device`. Cac field quan trong:
 - `syncStatus`: `SYNCED | FAILED`
 - `connectionType`: `LAN | 4G | UNKNOWN`
 - `volumeSyncStatus`: `PENDING | SYNCED | FAILED`
-- `command.type`: `NOOP | SET_VOLUME | START_RECORDING | STOP_RECORDING`
+- `command.type`: `NOOP | SET_VOLUME | START_RECORDING | STOP_RECORDING | PLAY_SCHEDULE | STOP_PLAYBACK | PLAY_EMERGENCY | STOP_EMERGENCY`
 
 ### Android ID va MAC
 

@@ -106,7 +106,14 @@ type DeviceRow = {
 };
 
 type DeviceCommandStatus = 'PENDING' | 'DELIVERED' | 'SUCCEEDED' | 'FAILED' | 'SUPERSEDED';
-type DeviceCommandType = 'SET_VOLUME' | 'START_RECORDING' | 'STOP_RECORDING' | 'PLAY_EMERGENCY' | 'STOP_EMERGENCY';
+type DeviceCommandType =
+  | 'SET_VOLUME'
+  | 'START_RECORDING'
+  | 'STOP_RECORDING'
+  | 'PLAY_SCHEDULE'
+  | 'STOP_PLAYBACK'
+  | 'PLAY_EMERGENCY'
+  | 'STOP_EMERGENCY';
 type DeviceRecordingStatus = 'REQUESTED' | 'RECORDING' | 'STOP_REQUESTED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
 
 type DeviceCommandRow = {
@@ -1452,6 +1459,37 @@ export class StorageService {
 
     if (!data) throw new Error('Khong tim thay thiet bi.');
     return this.toDeviceRecord(data as DeviceRow);
+  }
+
+  async createDevicePlaybackCommand(deviceId: string, type: 'PLAY_SCHEDULE' | 'STOP_PLAYBACK', payload: Record<string, unknown> = {}) {
+    const now = new Date().toISOString();
+    const { error: supersedeError } = await this.supabase
+      .from('device_commands')
+      .update({
+        status: 'SUPERSEDED',
+        message: 'Da co lenh phat/dung moi hon.',
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('device_id', deviceId)
+      .in('type', ['PLAY_SCHEDULE', 'STOP_PLAYBACK'])
+      .in('status', ['PENDING', 'DELIVERED']);
+
+    if (supersedeError) {
+      throw new Error(`Khong huy duoc lenh phat/dung cu: ${supersedeError.message}`);
+    }
+
+    const { error } = await this.supabase.from('device_commands').insert({
+      device_id: deviceId,
+      type,
+      payload,
+      status: 'PENDING',
+      updated_at: now,
+    });
+
+    if (error) {
+      throw new Error(`Khong tao duoc lenh phat/dung: ${error.message}`);
+    }
   }
 
   async getPendingDeviceCommand(deviceId: string) {

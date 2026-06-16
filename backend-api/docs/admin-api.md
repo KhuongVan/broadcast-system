@@ -644,6 +644,8 @@ Request:
 }
 ```
 
+Endpoint nay chi mo/khoa quyen phat theo lich. Neu can yeu cau thiet bi phat/dung ngay, dung `POST /api/devices/:deviceId/play-now` hoac `POST /api/devices/:deviceId/stop` de backend tao command cho Android polling.
+
 ### Update volume
 
 Gui muc am luong mong muon xuong thiet bi. Backend luu `desiredVolumeLevel`, tao lenh `SET_VOLUME`, va doi Android ack qua `/api/device-client/command-result`.
@@ -767,7 +769,8 @@ Request:
 
 Notes:
 
-- Hien service chi cho `sourceType=RTSP` cho thao tac play now tren thiet bi demo.
+- Backend gan lich cho thiet bi neu can, mo `playAllowed`, tao command `PLAY_SCHEDULE`, va cap nhat trang thai phat de admin thay ngay.
+- Android nhan command qua `GET /api/device-client/commands`, thuc thi phat, roi ack bang `/api/device-client/command-result` va `/api/device-client/playback-state`.
 - Response tra `{ device }`.
 
 ### Stop device
@@ -776,7 +779,7 @@ Notes:
 POST /api/devices/:deviceId/stop
 ```
 
-Response tra `{ device }`.
+Backend khoa `playAllowed`, tao command `STOP_PLAYBACK`, va cap nhat trang thai phat sang `STOPPED`. Response tra `{ device }`.
 
 ### Sync schedule to device
 

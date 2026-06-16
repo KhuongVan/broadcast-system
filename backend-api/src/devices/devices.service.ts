@@ -80,21 +80,32 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     const device = await this.getDevice(deviceId);
     const schedule = await this.storage.getSchedule(scheduleId);
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
-    if (schedule.sourceType !== 'RTSP') {
-      throw new BadRequestException('Chi co the phat ngay lich tiep song URL tren thiet bi demo.');
-    }
+    await this.ensureScheduleDoesNotConflict(device.deviceId, schedule);
+    await this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
+      syncStatus: device.online ? 'SYNCED' : 'FAILED',
+      syncMessage: device.online ? 'Da gan lich cho thiet bi de phat ngay.' : 'Da gan lich, thiet bi se nhan lenh khi ket noi lai.',
+    });
+    await this.storage.updateDevicePlayAllowed(device.deviceId, true);
+    await this.storage.createDevicePlaybackCommand(device.deviceId, 'PLAY_SCHEDULE', {
+      scheduleId: schedule.scheduleId,
+      sourceType: schedule.sourceType,
+    });
 
     return this.storage.updateDevicePlayback(device.deviceId, {
       playStatus: 'PLAYING',
       currentScheduleId: schedule.scheduleId,
+      playbackMessage: 'Dang cho thiet bi nhan lenh phat.',
     });
   }
 
   async stop(deviceId: string) {
     const device = await this.getDevice(deviceId);
+    await this.storage.updateDevicePlayAllowed(device.deviceId, false);
+    await this.storage.createDevicePlaybackCommand(device.deviceId, 'STOP_PLAYBACK');
     return this.storage.updateDevicePlayback(device.deviceId, {
       playStatus: 'STOPPED',
       currentScheduleId: null,
+      playbackMessage: 'Dang cho thiet bi nhan lenh dung.',
     });
   }
 

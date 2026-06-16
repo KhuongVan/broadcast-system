@@ -207,11 +207,6 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     await runDeviceAction(() => Promise.all(ids.map((deviceId) => action(deviceId))));
   }
 
-  async function stopScheduledPlayback(deviceId: string) {
-    await adminApi.updateDevicePlayAllowed(deviceId, false);
-    await adminApi.stopDevice(deviceId);
-  }
-
   async function updateDeviceVolume(deviceId: string, volumeLevel: number) {
     setSaving(true);
     setError('');
@@ -390,10 +385,10 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                       <button className="primary" disabled={saving || !selectedDeviceIds.size || !selectedScheduleId} onClick={() => void runBulk((id) => adminApi.syncDeviceSchedule(id, selectedScheduleId))} type="button">
                         Tải lịch
                       </button>
-                      <button className="success" disabled={saving || !selectedDeviceIds.size} onClick={() => void runBulk((id) => adminApi.updateDevicePlayAllowed(id, true))} type="button">
+                      <button className="success" disabled={saving || !selectedDeviceIds.size || !selectedScheduleId} onClick={() => void runBulk((id) => adminApi.playDeviceNow(id, selectedScheduleId))} type="button">
                         Bật phát
                       </button>
-                      <button className="danger" disabled={saving || !selectedDeviceIds.size} onClick={() => void runBulk(stopScheduledPlayback)} type="button">
+                      <button className="danger" disabled={saving || !selectedDeviceIds.size} onClick={() => void runBulk((id) => adminApi.stopDevice(id))} type="button">
                         Dừng
                       </button>
                     </div>
