@@ -52,6 +52,7 @@ export type Schedule = {
   startTime: string;
   endTime: string;
   repeatType: ScheduleRepeatType;
+  repeatCount: number;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -69,6 +70,7 @@ export type ScheduleInput = {
   startTime: string;
   endTime: string;
   repeatType: ScheduleRepeatType;
+  repeatCount: number;
   enabled: boolean;
 };
 

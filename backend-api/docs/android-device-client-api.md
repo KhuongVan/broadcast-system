@@ -263,6 +263,7 @@ Response khi co nhieu lich:
       "startTime": "06:00",
       "endTime": "06:30",
       "repeatType": "DAILY",
+      "repeatCount": 0,
       "enabled": true
     }
   ],
@@ -282,6 +283,7 @@ Notes:
 - Voi `sourceType=RTSP`, app dung `schedule.rtspUrl`.
 - Voi `sourceType=FILE` va `fileMode=PLAYLIST`, app lay playlist tai `playlistsByScheduleId[scheduleId]`.
 - Voi `sourceType=FILE` va `fileMode=SINGLE_FILE`, app lay file tai `filesByScheduleId[scheduleId]`.
+- `repeatCount` la so lan phat lai them cho lich `FILE`, hop le tu `0` den `30`; RTSP/HLS bo qua va nhan `0`.
 - Cac `url` la signed URL, co thoi han theo backend config `SIGNED_URL_TTL_SECONDS`.
 
 cURL:

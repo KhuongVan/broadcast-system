@@ -392,7 +392,6 @@ Schedule input:
 {
   "name": "Lịch phát sáng",
   "sourceType": "FILE",
-  "priority": "NORMAL",
   "playlistId": "uuid",
   "fileId": null,
   "fileMode": "PLAYLIST",
@@ -401,6 +400,7 @@ Schedule input:
   "startTime": "06:00",
   "endTime": "06:30",
   "repeatType": "DAILY",
+  "repeatCount": 2,
   "enabled": true
 }
 ```
@@ -408,9 +408,10 @@ Schedule input:
 Allowed values:
 
 - `sourceType`: `FILE | RTSP`
-- `priority`: `NORMAL | EMERGENCY`
+- `priority`: optional legacy field, defaults to `NORMAL` for schedules created by the admin UI.
 - `fileMode`: `PLAYLIST | SINGLE_FILE`
 - `repeatType`: `ONCE | DAILY | WEEKLY | MONTHLY`
+- `repeatCount`: integer `0..30`, chỉ áp dụng cho `sourceType = FILE`. `0` nghĩa là không phát lại thêm; RTSP/HLS luôn lưu `0`.
 
 ### List schedules
 
@@ -436,6 +437,7 @@ Response:
       "startTime": "06:00",
       "endTime": "06:30",
       "repeatType": "DAILY",
+      "repeatCount": 2,
       "enabled": true
     }
   ]

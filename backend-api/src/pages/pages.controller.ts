@@ -252,7 +252,6 @@ export class PagesController {
                   <th>Tên lịch</th>
                   <th>Kiểu phát</th>
                   <th>Nguồn phát</th>
-                  <th>Mức ưu tiên</th>
                   <th>Thời gian</th>
                   <th>Lặp lại</th>
                   <th>Trạng thái</th>
@@ -269,7 +268,7 @@ export class PagesController {
             <div class="panel-header">
               <div>
                 <h2 class="panel-title">Thêm mới lịch phát</h2>
-                <div class="muted">Chọn nguồn phát, mức ưu tiên và thời gian phát.</div>
+                <div class="muted">Chọn nguồn phát và thời gian phát.</div>
               </div>
               <button class="ghost" onclick="showView('schedules')">Quay lại</button>
             </div>
@@ -283,12 +282,6 @@ export class PagesController {
                   <option value="RTSP">Tiếp sóng URL</option>
                 </select>
               </label>
-              <label>Mức ưu tiên
-                <select id="schedulePriorityInput">
-                  <option value="NORMAL">Thường</option>
-                  <option value="EMERGENCY">Khẩn cấp</option>
-                </select>
-              </label>
               <label class="file-schedule-field">Danh sách phát
                 <select id="schedulePlaylistInput" onchange="renderScheduleFileOptions()"></select>
               </label>
@@ -300,6 +293,12 @@ export class PagesController {
               </label>
               <label class="file-schedule-field full-row" id="scheduleFileField">File cần phát
                 <select id="scheduleFileInput"></select>
+              </label>
+              <label class="file-schedule-field">Phát lặp lại
+                <div class="inline-tools">
+                  <input id="scheduleRepeatCountInput" type="number" min="0" max="30" value="0">
+                  <span>Lần</span>
+                </div>
               </label>
               <label class="rtsp-schedule-field full-row">Stream URL
                 <div class="inline-tools">
@@ -779,6 +778,11 @@ export class PagesController {
       return ({ ONCE: 'Không lặp', DAILY: 'Hằng ngày', WEEKLY: 'Hằng tuần', MONTHLY: 'Hằng tháng' }[value] || value);
     }
 
+    function getPlaybackRepeatLabel(schedule) {
+      if (!schedule || schedule.sourceType !== 'FILE' || !schedule.repeatCount) return '';
+      return '<div class="muted">Phát lại ' + Number(schedule.repeatCount) + ' lần</div>';
+    }
+
     function getDeviceDownloadableSchedules() {
       return state.schedules.filter((schedule) => schedule.sourceType === 'RTSP');
     }
@@ -1237,7 +1241,7 @@ export class PagesController {
       renderScheduleStatus();
       const rows = document.getElementById('scheduleRows');
       if (state.schedules.length === 0) {
-        rows.innerHTML = '<tr><td colspan="8" class="muted">Chưa có lịch phát. Hãy tạo lịch phát mới.</td></tr>';
+        rows.innerHTML = '<tr><td colspan="7" class="muted">Chưa có lịch phát. Hãy tạo lịch phát mới.</td></tr>';
         return;
       }
 
@@ -1246,9 +1250,8 @@ export class PagesController {
           <td><strong>\${escapeHtml(schedule.name)}</strong></td>
           <td>\${schedule.sourceType === 'FILE' ? 'Phát từ file' : 'Tiếp sóng URL'}</td>
           <td>\${escapeHtml(getScheduleSourceLabel(schedule))}</td>
-          <td>\${schedule.priority === 'EMERGENCY' ? 'Khẩn cấp' : 'Thường'}</td>
           <td>\${escapeHtml(schedule.startDate)} · \${escapeHtml(schedule.startTime)}-\${escapeHtml(schedule.endTime)}</td>
-          <td>\${getRepeatLabel(schedule.repeatType)}</td>
+          <td>\${getRepeatLabel(schedule.repeatType)}\${getPlaybackRepeatLabel(schedule)}</td>
           <td>\${schedule.enabled ? 'Đang bật' : 'Đang tắt'}</td>
           <td class="actions">
             <button class="primary" onclick="editSchedule('\${schedule.scheduleId}')">Chỉnh sửa</button>
@@ -1283,7 +1286,7 @@ export class PagesController {
           <div class="schedule-status-item"><span>Trạng thái</span><strong>\${statusLabel}</strong></div>
           <div class="schedule-status-item"><span>Tên lịch</span><strong>\${escapeHtml(display.name)}</strong></div>
           <div class="schedule-status-item"><span>Kiểu phát</span><strong>\${display.sourceType === 'FILE' ? 'Phát từ file' : 'Tiếp sóng URL'}</strong></div>
-          <div class="schedule-status-item"><span>Mức ưu tiên</span><strong>\${display.priority === 'EMERGENCY' ? 'Khẩn cấp' : 'Thường'}</strong></div>
+          <div class="schedule-status-item"><span>Phát lặp lại</span><strong>\${display.sourceType === 'FILE' ? (display.repeatCount || 0) + ' lần' : 'Không áp dụng'}</strong></div>
           <div class="schedule-status-item full-row"><span>Thời gian</span><strong>\${escapeHtml(display.startDate)} · \${escapeHtml(display.startTime)}-\${escapeHtml(display.endTime)}</strong></div>
         </div>
         \${active && paused ? '<div class="muted">Có một lịch khác đang tạm dừng. Nút phát tiếp sẽ khả dụng khi lịch hiện tại dừng.</div>' : ''}
@@ -1373,13 +1376,13 @@ export class PagesController {
       const today = new Date().toISOString().slice(0, 10);
       document.getElementById('scheduleNameInput').value = 'Lịch phát mới';
       document.getElementById('scheduleSourceInput').value = 'FILE';
-      document.getElementById('schedulePriorityInput').value = 'NORMAL';
       document.getElementById('scheduleFileModeInput').value = 'PLAYLIST';
       document.getElementById('scheduleRtspInput').value = '';
       document.getElementById('scheduleStartDateInput').value = today;
       document.getElementById('scheduleStartTimeInput').value = '06:00';
       document.getElementById('scheduleEndTimeInput').value = '06:30';
       document.getElementById('scheduleRepeatInput').value = 'ONCE';
+      document.getElementById('scheduleRepeatCountInput').value = '0';
       document.getElementById('scheduleEnabledInput').value = 'true';
       resetRtspTestStatus();
       updateScheduleSourceFields();
@@ -1393,7 +1396,6 @@ export class PagesController {
       state.selectedSchedule = schedule;
       document.getElementById('scheduleNameInput').value = schedule.name;
       document.getElementById('scheduleSourceInput').value = schedule.sourceType;
-      document.getElementById('schedulePriorityInput').value = schedule.priority;
       document.getElementById('schedulePlaylistInput').value = schedule.playlistId || '';
       document.getElementById('scheduleFileModeInput').value = schedule.fileMode || 'PLAYLIST';
       document.getElementById('scheduleRtspInput').value = schedule.rtspUrl || '';
@@ -1401,6 +1403,7 @@ export class PagesController {
       document.getElementById('scheduleStartTimeInput').value = schedule.startTime;
       document.getElementById('scheduleEndTimeInput').value = schedule.endTime;
       document.getElementById('scheduleRepeatInput').value = schedule.repeatType;
+      document.getElementById('scheduleRepeatCountInput').value = schedule.sourceType === 'FILE' ? String(schedule.repeatCount || 0) : '0';
       document.getElementById('scheduleEnabledInput').value = String(Boolean(schedule.enabled));
       resetRtspTestStatus();
       updateScheduleSourceFields();
@@ -1411,10 +1414,11 @@ export class PagesController {
     async function saveSchedule() {
       const sourceType = document.getElementById('scheduleSourceInput').value;
       const fileMode = document.getElementById('scheduleFileModeInput').value;
+      const repeatCountInput = Number(document.getElementById('scheduleRepeatCountInput').value || 0);
       const body = {
         name: document.getElementById('scheduleNameInput').value.trim(),
         sourceType,
-        priority: document.getElementById('schedulePriorityInput').value,
+        priority: 'NORMAL',
         playlistId: sourceType === 'FILE' ? document.getElementById('schedulePlaylistInput').value : null,
         fileMode: sourceType === 'FILE' ? fileMode : null,
         fileId: sourceType === 'FILE' && fileMode === 'SINGLE_FILE' ? document.getElementById('scheduleFileInput').value : null,
@@ -1423,6 +1427,7 @@ export class PagesController {
         startTime: document.getElementById('scheduleStartTimeInput').value,
         endTime: document.getElementById('scheduleEndTimeInput').value,
         repeatType: document.getElementById('scheduleRepeatInput').value,
+        repeatCount: sourceType === 'FILE' ? Math.max(0, Math.min(30, Number.isFinite(repeatCountInput) ? repeatCountInput : 0)) : 0,
         enabled: document.getElementById('scheduleEnabledInput').value === 'true',
       };
 

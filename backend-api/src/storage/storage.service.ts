@@ -59,6 +59,7 @@ type BroadcastScheduleRow = {
   start_time: string;
   end_time: string;
   repeat_type: 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  repeat_count: number | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -1882,6 +1883,7 @@ export class StorageService {
       start_time: input.startTime,
       end_time: input.endTime,
       repeat_type: input.repeatType,
+      repeat_count: input.repeatCount,
       enabled: input.enabled,
     };
   }
@@ -1900,6 +1902,7 @@ export class StorageService {
       startTime: row.start_time.slice(0, 5),
       endTime: row.end_time.slice(0, 5),
       repeatType: row.repeat_type,
+      repeatCount: row.repeat_count ?? 0,
       enabled: row.enabled,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

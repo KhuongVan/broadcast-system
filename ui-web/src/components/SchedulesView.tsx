@@ -22,6 +22,7 @@ const emptyForm: ScheduleInput = {
   startTime: '06:00',
   endTime: '06:30',
   repeatType: 'DAILY',
+  repeatCount: 0,
   enabled: true,
 };
 
@@ -81,6 +82,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
         next.playlistId = null;
         next.fileId = null;
         next.fileMode = null;
+        next.repeatCount = 0;
       }
       if (key === 'sourceType' && value === 'FILE') {
         next.fileMode = next.fileMode || 'PLAYLIST';
@@ -109,6 +111,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       startTime: schedule.startTime.slice(0, 5),
       endTime: schedule.endTime.slice(0, 5),
       repeatType: schedule.repeatType,
+      repeatCount: schedule.sourceType === 'FILE' ? schedule.repeatCount || 0 : 0,
       enabled: schedule.enabled,
     });
   }
@@ -240,13 +243,17 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                   <tr key={schedule.scheduleId}>
                     <td>
                       <strong>{schedule.name}</strong>
-                      <div className="subtext">{schedule.priority === 'EMERGENCY' ? 'Ưu tiên khẩn cấp' : 'Ưu tiên thường'}</div>
                     </td>
                     <td>{sourceLabel(schedule)}</td>
                     <td>
                       {schedule.startDate} {schedule.startTime.slice(0, 5)} - {schedule.endTime.slice(0, 5)}
                     </td>
-                    <td>{repeatLabel(schedule.repeatType)}</td>
+                    <td>
+                      {repeatLabel(schedule.repeatType)}
+                      {schedule.sourceType === 'FILE' && schedule.repeatCount > 0 ? (
+                        <div className="subtext">{playbackRepeatLabel(schedule.repeatCount)}</div>
+                      ) : null}
+                    </td>
                     <td>
                       <StatusBadge tone={schedule.enabled ? 'ok' : 'neutral'}>
                         {schedule.enabled ? 'Đang bật' : 'Đang tắt'}
@@ -284,13 +291,21 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                       <option value="FILE">File/Playlist</option>
                     </select>
                   </label>
-                  <label>
-                    Ưu tiên
-                    <select value={form.priority} onChange={(event) => update('priority', event.target.value as ScheduleInput['priority'])}>
-                      <option value="NORMAL">Thường</option>
-                      <option value="EMERGENCY">Khẩn cấp</option>
-                    </select>
-                  </label>
+                  {form.sourceType === 'FILE' ? (
+                    <label>
+                      Phát lặp lại
+                      <div className="inline-fields">
+                        <input
+                          min={0}
+                          max={30}
+                          type="number"
+                          value={form.repeatCount}
+                          onChange={(event) => update('repeatCount', Number(event.target.value) as ScheduleInput['repeatCount'])}
+                        />
+                        <span>Lần</span>
+                      </div>
+                    </label>
+                  ) : null}
                 </div>
 
                 {form.sourceType === 'RTSP' ? (
@@ -396,14 +411,16 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
 
 function normalizeForm(form: ScheduleInput): ScheduleInput {
   if (form.sourceType === 'RTSP') {
-    return { ...form, playlistId: null, fileId: null, fileMode: null, rtspUrl: form.rtspUrl?.trim() || '' };
+    return { ...form, priority: 'NORMAL', playlistId: null, fileId: null, fileMode: null, rtspUrl: form.rtspUrl?.trim() || '', repeatCount: 0 };
   }
 
   return {
     ...form,
+    priority: 'NORMAL',
     rtspUrl: null,
     fileMode: form.fileMode || 'PLAYLIST',
     fileId: form.fileMode === 'SINGLE_FILE' ? form.fileId : null,
+    repeatCount: Math.max(0, Math.min(30, Number(form.repeatCount) || 0)),
   };
 }
 
@@ -431,4 +448,8 @@ function repeatLabel(value: Schedule['repeatType']) {
     WEEKLY: 'Hằng tuần',
     MONTHLY: 'Hằng tháng',
   }[value];
+}
+
+function playbackRepeatLabel(value: number) {
+  return `Phát lại ${value} lần`;
 }

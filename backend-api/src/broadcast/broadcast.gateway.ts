@@ -53,6 +53,8 @@ type ActivePlaylistSession = {
   startOffsetSeconds: number;
   pausedOffsetSeconds: number;
   isPlaying: boolean;
+  repeatCount: number;
+  completedRepeats: number;
   scheduleId?: string;
   singleFileId?: string;
 };
@@ -389,6 +391,11 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     if (!currentFileId || currentFileId !== payload.fileId) return;
 
     if (this.activePlaylist.singleFileId) {
+      if (this.canRepeatActivePlaylist()) {
+        this.activePlaylist.completedRepeats += 1;
+        this.playCurrentPlaylistItem(true);
+        return;
+      }
       this.activePlaylist = null;
       this.emitToActiveScheduleDevices('STOP');
       return;
@@ -396,6 +403,12 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
     this.activePlaylist.currentIndex += 1;
     if (this.activePlaylist.currentIndex >= this.activePlaylist.playlist.items.length) {
+      if (this.canRepeatActivePlaylist()) {
+        this.activePlaylist.completedRepeats += 1;
+        this.activePlaylist.currentIndex = 0;
+        this.playCurrentPlaylistItem(true);
+        return;
+      }
       this.activePlaylist = null;
       this.emitToActiveScheduleDevices('STOP');
       return;
@@ -431,6 +444,13 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
 
     this.emitCurrentPlaylistItem(this.server, resetPosition);
+  }
+
+  private canRepeatActivePlaylist() {
+    if (!this.activePlaylist) return false;
+    if (this.activePlaylist.completedRepeats >= this.activePlaylist.repeatCount) return false;
+    if (this.activePlaylist.scheduleId && this.activeSchedule && !this.schedules.isScheduleActive(this.activeSchedule)) return false;
+    return true;
   }
 
   private emitCurrentPlaylistItem(target: Server | Socket, resetPosition: boolean) {
@@ -665,6 +685,8 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
         startOffsetSeconds: pausedOffsetSeconds,
         pausedOffsetSeconds,
         isPlaying: true,
+        repeatCount: schedule.repeatCount,
+        completedRepeats: shouldResume ? this.activePlaylist!.completedRepeats : 0,
         scheduleId: schedule.scheduleId,
         singleFileId: record.fileId,
       };
@@ -693,6 +715,8 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       startOffsetSeconds: shouldResume ? this.activePlaylist!.pausedOffsetSeconds : 0,
       pausedOffsetSeconds: shouldResume ? this.activePlaylist!.pausedOffsetSeconds : 0,
       isPlaying: true,
+      repeatCount: schedule.repeatCount,
+      completedRepeats: shouldResume ? this.activePlaylist!.completedRepeats : 0,
       scheduleId: schedule.scheduleId,
     };
     this.playCurrentPlaylistItem(resetPosition);

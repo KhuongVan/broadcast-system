@@ -737,10 +737,14 @@ function AssignedSchedulesTable({
             <tr key={assignment.assignmentId}>
               <td>
                 <strong>{assignment.schedule.name}</strong>
-                <div className="subtext">{assignment.schedule.priority === 'EMERGENCY' ? 'Ưu tiên khẩn cấp' : 'Ưu tiên thường'}</div>
               </td>
               <td>{formatScheduleWindow(assignment.schedule)}</td>
-              <td>{repeatLabel(assignment.schedule.repeatType)}</td>
+              <td>
+                {repeatLabel(assignment.schedule.repeatType)}
+                {assignment.schedule.sourceType === 'FILE' && assignment.schedule.repeatCount > 0 ? (
+                  <div className="subtext">Phát lại {assignment.schedule.repeatCount} lần</div>
+                ) : null}
+              </td>
               <td>{getScheduleSourceLabel(assignment.schedule)}</td>
               <td>
                 <StatusBadge tone={assignment.syncStatus === 'FAILED' ? 'danger' : assignment.syncStatus === 'SYNCED' ? 'ok' : 'warn'}>

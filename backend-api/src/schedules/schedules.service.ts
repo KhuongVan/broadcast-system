@@ -67,6 +67,7 @@ export class SchedulesService {
     const playlistId = sourceType === 'FILE' ? input.playlistId || null : null;
     const fileId = sourceType === 'FILE' && fileMode === 'SINGLE_FILE' ? input.fileId || null : null;
     const rtspUrl = sourceType === 'RTSP' ? (input.rtspUrl || '').trim() : null;
+    const repeatCount = sourceType === 'FILE' ? this.normalizeRepeatCount(input.repeatCount) : 0;
 
     if (!name) throw new BadRequestException('Vui lòng nhập tên lịch phát.');
     if (!['FILE', 'RTSP'].includes(sourceType)) throw new BadRequestException('Kiểu phát không hợp lệ.');
@@ -97,8 +98,17 @@ export class SchedulesService {
       startTime,
       endTime,
       repeatType,
+      repeatCount,
       enabled,
     };
+  }
+
+  private normalizeRepeatCount(value: unknown) {
+    const repeatCount = value === undefined || value === null || value === '' ? 0 : Number(value);
+    if (!Number.isInteger(repeatCount) || repeatCount < 0 || repeatCount > 30) {
+      throw new BadRequestException('Số lần phát lặp lại phải là số nguyên từ 0 đến 30.');
+    }
+    return repeatCount;
   }
 
   private async ensureNoPriorityConflict(schedule: Required<ScheduleInput>, ignoreScheduleId?: string) {

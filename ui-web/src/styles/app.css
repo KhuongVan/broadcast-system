@@ -766,6 +766,18 @@ audio {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.inline-fields {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.inline-fields span {
+  color: #6f6656;
+  font-weight: 700;
+}
+
 .check-row {
   align-items: center;
   display: flex !important;

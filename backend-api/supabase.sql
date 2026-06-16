@@ -42,6 +42,7 @@ create table if not exists broadcast_schedules (
   start_time time not null,
   end_time time not null,
   repeat_type text not null default 'ONCE' check (repeat_type in ('ONCE', 'DAILY', 'WEEKLY', 'MONTHLY')),
+  repeat_count integer not null default 0 check (repeat_count between 0 and 30),
   enabled boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -58,6 +59,21 @@ on broadcast_schedules(enabled);
 
 create index if not exists idx_broadcast_schedules_time
 on broadcast_schedules(start_date, start_time, end_time);
+
+alter table broadcast_schedules
+add column if not exists repeat_count integer not null default 0;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'broadcast_schedules_repeat_count_check'
+  ) then
+    alter table broadcast_schedules
+    add constraint broadcast_schedules_repeat_count_check check (repeat_count between 0 and 30);
+  end if;
+end $$;
 
 create table if not exists schedule_run_logs (
   run_log_id uuid primary key default gen_random_uuid(),
@@ -419,6 +435,7 @@ insert into broadcast_schedules (
   start_time,
   end_time,
   repeat_type,
+  repeat_count,
   enabled
 )
 values
@@ -435,6 +452,7 @@ values
     '06:00',
     '06:30',
     'DAILY',
+    0,
     true
   ),
   (
@@ -450,6 +468,7 @@ values
     '17:30',
     '18:00',
     'DAILY',
+    0,
     true
   )
 on conflict (schedule_id) do nothing;
