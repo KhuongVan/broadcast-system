@@ -137,18 +137,18 @@ export function TtsForm({ onGenerated }: TtsFormProps) {
                 </button>
               </div>
               {message ? <div className="state compact">{message}</div> : null}
+
+              {latestFile && (
+                <div className="tts-modern-latest">
+                  <h3>File mới tạo</h3>
+                  <strong>{latestFile.originalName}</strong>
+                  <p className="subtext">{latestFile.storagePath}</p>
+                  <audio controls src={latestFile.url} />
+                  <p className="subtext">Đã tạo và lưu vào Kho âm thanh, có thể thêm vào playlist/lịch phát.</p>
+                </div>
+              )}
             </form>
           </div>
-          
-          {latestFile && (
-            <div className="tts-modern-latest">
-              <h3>File mới tạo</h3>
-              <strong>{latestFile.originalName}</strong>
-              <p className="subtext">{latestFile.storagePath}</p>
-              <audio controls src={latestFile.url} />
-              <p className="subtext">File này đã nằm trong Kho âm thanh và có thể thêm vào playlist/lịch phát.</p>
-            </div>
-          )}
         </div>
       ) : null}
     </>
