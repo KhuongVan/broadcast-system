@@ -45,11 +45,12 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const [search, setSearch] = useState('');
 
   const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
+  const displaySchedules = useMemo(() => [...schedules].sort(compareScheduleCreatedAtDesc), [schedules]);
   const filteredSchedules = useMemo(() => {
     const keyword = normalizeSearchText(search);
-    if (!keyword) return schedules;
-    return schedules.filter((schedule) => normalizeSearchText(schedule.name).includes(keyword));
-  }, [schedules, search]);
+    if (!keyword) return displaySchedules;
+    return displaySchedules.filter((schedule) => normalizeSearchText(schedule.name).includes(keyword));
+  }, [displaySchedules, search]);
   const schedulePagination = usePagination(filteredSchedules.length);
   const pagedSchedules = useMemo(
     () => paginate(filteredSchedules, schedulePagination.page, schedulePagination.pageSize),
@@ -381,10 +382,6 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                     <input type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
                   </label>
                 </div>
-                <label className="check-row">
-                  <input checked={form.enabled} onChange={(event) => update('enabled', event.target.checked)} type="checkbox" />
-                  Bật lịch
-                </label>
                 <div className="row-actions">
                   <button className="primary" disabled={saving || !form.name.trim()}>
                     {editingId ? 'Lưu lịch' : 'Tạo lịch'}
@@ -434,6 +431,10 @@ function normalizeSearchText(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+}
+
+function compareScheduleCreatedAtDesc(a: Schedule, b: Schedule) {
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
 function sourceLabel(schedule: Schedule) {

@@ -324,12 +324,6 @@ export class PagesController {
                   <option value="MONTHLY">Hằng tháng</option>
                 </select>
               </label>
-              <label>Trạng thái
-                <select id="scheduleEnabledInput">
-                  <option value="true">Bật</option>
-                  <option value="false">Tắt</option>
-                </select>
-              </label>
               <div class="actions full-row">
                 <button class="success" onclick="saveSchedule()">Lưu lịch phát</button>
                 <button class="neutral" onclick="showView('schedules')">Hủy bỏ</button>
@@ -1383,7 +1377,6 @@ export class PagesController {
       document.getElementById('scheduleEndTimeInput').value = '06:30';
       document.getElementById('scheduleRepeatInput').value = 'ONCE';
       document.getElementById('scheduleRepeatCountInput').value = '0';
-      document.getElementById('scheduleEnabledInput').value = 'true';
       resetRtspTestStatus();
       updateScheduleSourceFields();
       showView('scheduleEditor');
@@ -1404,7 +1397,6 @@ export class PagesController {
       document.getElementById('scheduleEndTimeInput').value = schedule.endTime;
       document.getElementById('scheduleRepeatInput').value = schedule.repeatType;
       document.getElementById('scheduleRepeatCountInput').value = schedule.sourceType === 'FILE' ? String(schedule.repeatCount || 0) : '0';
-      document.getElementById('scheduleEnabledInput').value = String(Boolean(schedule.enabled));
       resetRtspTestStatus();
       updateScheduleSourceFields();
       document.getElementById('scheduleFileInput').value = schedule.fileId || '';
@@ -1428,7 +1420,7 @@ export class PagesController {
         endTime: document.getElementById('scheduleEndTimeInput').value,
         repeatType: document.getElementById('scheduleRepeatInput').value,
         repeatCount: sourceType === 'FILE' ? Math.max(0, Math.min(30, Number.isFinite(repeatCountInput) ? repeatCountInput : 0)) : 0,
-        enabled: document.getElementById('scheduleEnabledInput').value === 'true',
+        enabled: state.selectedSchedule ? Boolean(state.selectedSchedule.enabled) : true,
       };
 
       if (sourceType === 'RTSP' && (rtspTestState !== 'ok' || rtspTestedUrl !== body.rtspUrl)) {
