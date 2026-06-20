@@ -224,6 +224,38 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     }
   }
 
+  async function playMapDevice(device: Device) {
+    const scheduleId = device.currentSchedule?.scheduleId || device.activeSchedule?.scheduleId || '';
+    if (!scheduleId) {
+      showError('Thiết bị chưa có lịch để bật phát.');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const { device: updatedDevice } = await adminApi.playDeviceNow(device.deviceId, scheduleId);
+      setDevices((current) => current.map((item) => (item.deviceId === updatedDevice.deviceId ? updatedDevice : item)));
+    } catch (err) {
+      showError(err, 'Không bật phát được thiết bị.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function stopMapDevice(deviceId: string) {
+    setSaving(true);
+    setError('');
+    try {
+      const { device } = await adminApi.stopDevice(deviceId);
+      setDevices((current) => current.map((item) => (item.deviceId === device.deviceId ? device : item)));
+    } catch (err) {
+      showError(err, 'Không dừng phát được thiết bị.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function openRecordingModal(device: Device) {
     setRecordingDevice(device);
     setRecordings([]);
@@ -365,11 +397,15 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
           {activeSection === 'map' ? (
             <DeviceMapView
               devices={filteredDevices}
+              saving={saving}
               stats={visibleStats}
               search={search}
               onSearchChange={setSearch}
+              onPlayDevice={(device) => void playMapDevice(device)}
               onStartEmergency={onStartEmergency}
               onStartLive={onStartLive}
+              onStopDevice={(deviceId) => void stopMapDevice(deviceId)}
+              onVolumeChange={(deviceId, volumeLevel) => void updateDeviceVolume(deviceId, volumeLevel)}
             />
           ) : null}
 

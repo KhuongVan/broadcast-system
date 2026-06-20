@@ -39,15 +39,31 @@ function MapUpdater({ center, zoom }: { center: [number, number] | null; zoom?: 
 
 type DeviceMapViewProps = {
   devices: Device[];
+  saving: boolean;
   stats: { total: number; online: number; offline: number; playing: number };
   search: string;
   onSearchChange: (value: string) => void;
+  onPlayDevice: (device: Device) => void;
   onStartEmergency: (deviceId: string) => void;
   onStartLive: (deviceId: string) => void;
+  onStopDevice: (deviceId: string) => void;
+  onVolumeChange: (deviceId: string, volumeLevel: number) => void;
 };
 
-export function DeviceMapView({ devices, stats, search, onSearchChange, onStartEmergency, onStartLive }: DeviceMapViewProps) {
+export function DeviceMapView({
+  devices,
+  saving,
+  stats,
+  search,
+  onSearchChange,
+  onPlayDevice,
+  onStartEmergency,
+  onStartLive,
+  onStopDevice,
+  onVolumeChange,
+}: DeviceMapViewProps) {
   const [activeDevice, setActiveDevice] = useState<Device | null>(null);
+  const [volumePanelDeviceId, setVolumePanelDeviceId] = useState('');
   
   const groupedDevices = useMemo(() => {
     const groups: Record<string, Device[]> = {};
@@ -131,6 +147,10 @@ export function DeviceMapView({ devices, stats, search, onSearchChange, onStartE
             {activeDevice && <MapUpdater center={getDevicePosition(activeDevice)} />}
             {devices.map(device => {
               const position = getDevicePosition(device);
+              const canPlay = Boolean(device.currentSchedule?.scheduleId || device.activeSchedule?.scheduleId);
+              const isPlaying = device.playStatus === 'PLAYING';
+              const displayVolume = device.desiredVolumeLevel ?? device.volumeLevel ?? 0;
+              const volumePanelOpen = volumePanelDeviceId === device.deviceId;
               if (position) {
                 return (
                   <Marker 
@@ -159,6 +179,54 @@ export function DeviceMapView({ devices, stats, search, onSearchChange, onStartE
                         {device.batteryLevel !== null && (
                           <div className="popup-row"><span className="label">Pin:</span> <span className="value">{device.batteryLevel}%</span></div>
                         )}
+                        <div className="popup-monitor-controls">
+                          <button
+                            aria-label={isPlaying ? `Dừng phát ${device.name}` : `Bật phát ${device.name}`}
+                            className={`popup-play-toggle ${isPlaying ? 'playing' : ''}`}
+                            disabled={saving || (!isPlaying && !canPlay)}
+                            onClick={() => (isPlaying ? onStopDevice(device.deviceId) : onPlayDevice(device))}
+                            title={isPlaying ? 'Dừng phát' : canPlay ? 'Bật phát' : 'Chưa có lịch để bật phát'}
+                            type="button"
+                          >
+                            <span aria-hidden="true">{isPlaying ? '■' : '▶'}</span>
+                            {isPlaying ? 'Dừng' : 'Bật phát'}
+                          </button>
+                          <button
+                            aria-label={`Chỉnh âm lượng ${device.name}`}
+                            className="popup-volume-toggle"
+                            disabled={saving}
+                            onClick={() => setVolumePanelDeviceId((current) => (current === device.deviceId ? '' : device.deviceId))}
+                            title="Chỉnh âm lượng"
+                            type="button"
+                          >
+                            🔊
+                          </button>
+                        </div>
+                        {!isPlaying && !canPlay ? <div className="popup-hint">Chưa có lịch để bật phát.</div> : null}
+                        {volumePanelOpen ? (
+                          <div className="popup-volume-panel">
+                            <div className="popup-volume-row">
+                              <span>{displayVolume}</span>
+                              <input
+                                aria-label={`Âm lượng ${device.name}`}
+                                disabled={saving}
+                                max={15}
+                                min={0}
+                                onChange={(event) => onVolumeChange(device.deviceId, Number(event.target.value))}
+                                type="range"
+                                value={displayVolume}
+                              />
+                              <span>15</span>
+                            </div>
+                            <div className="popup-volume-footer">
+                              <button disabled={saving || displayVolume === 0} onClick={() => onVolumeChange(device.deviceId, 0)} type="button">
+                                Tắt âm
+                              </button>
+                              <span>{getVolumeSyncLabel(device.volumeSyncStatus)}</span>
+                            </div>
+                            <div className="popup-volume-note">{formatDeviceMessage(device.volumeSyncMessage || getVolumeActualText(device))}</div>
+                          </div>
+                        ) : null}
                         <div className="popup-actions">
                           <button
                             aria-label={`Phát khẩn cấp tới ${device.name}`}
@@ -197,4 +265,26 @@ function getConnectionTypeLabel(connectionType: Device['connectionType']) {
   if (connectionType === 'LAN') return 'LAN';
   if (connectionType === '4G') return '4G';
   return 'Chưa xác định';
+}
+
+function getVolumeSyncLabel(status: Device['volumeSyncStatus']) {
+  if (status === 'SYNCED') return 'Đã áp dụng';
+  if (status === 'FAILED') return 'Thất bại';
+  if (status === 'PENDING') return 'Đang chờ';
+  return 'Chưa đặt';
+}
+
+function getVolumeActualText(device: Device) {
+  return device.volumeLevel !== null ? `Thực tế: ${device.volumeLevel}` : 'Chưa có xác nhận';
+}
+
+const deviceMessageLabels: Record<string, string> = {
+  'Da co lenh am luong moi hon.': 'Đã có lệnh âm lượng mới hơn.',
+  'Dang cho thiet bi nhan lenh am luong.': 'Đang chờ thiết bị nhận lệnh âm lượng.',
+  'Thiet bi ap dung am luong that bai.': 'Thiết bị áp dụng âm lượng thất bại.',
+  'Thiet bi da ap dung am luong.': 'Thiết bị đã áp dụng âm lượng.',
+};
+
+function formatDeviceMessage(message: string) {
+  return deviceMessageLabels[message.trim()] || message;
 }
