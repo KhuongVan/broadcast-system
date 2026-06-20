@@ -207,6 +207,7 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
             <table className="playlist-table">
               <thead>
                 <tr>
+                  <th>STT</th>
                   <th>Tên danh sách phát</th>
                   <th>Tổng số file</th>
                   <th>Tổng dung lượng</th>
@@ -215,8 +216,9 @@ export function PlaylistsView({ embedded = false }: PlaylistsViewProps) {
                 </tr>
               </thead>
               <tbody>
-                {pagedPlaylists.map((playlist) => (
+                {pagedPlaylists.map((playlist, index) => (
                   <tr key={playlist.playlistId}>
+                    <td>{(playlistPagination.page - 1) * playlistPagination.pageSize + index + 1}</td>
                     <td>
                       <strong>{playlist.name}</strong>
                     </td>

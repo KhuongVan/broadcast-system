@@ -9,6 +9,7 @@ import { StatusBadge } from './StatusBadge';
 import { useToast } from './Toast';
 
 const today = new Date().toISOString().slice(0, 10);
+const ALL_REPEAT_TYPES = 'ALL';
 
 const emptyForm: ScheduleInput = {
   name: '',
@@ -43,18 +44,32 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [testResult, setTestResult] = useState('');
   const [search, setSearch] = useState('');
+  const [repeatFilter, setRepeatFilter] = useState<Schedule['repeatType'] | typeof ALL_REPEAT_TYPES>(ALL_REPEAT_TYPES);
+  const [dateFilter, setDateFilter] = useState('');
+  const [timeFromFilter, setTimeFromFilter] = useState('');
+  const [timeToFilter, setTimeToFilter] = useState('');
 
   const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
   const displaySchedules = useMemo(() => [...schedules].sort(compareScheduleCreatedAtDesc), [schedules]);
   const filteredSchedules = useMemo(() => {
     const keyword = normalizeSearchText(search);
-    if (!keyword) return displaySchedules;
-    return displaySchedules.filter((schedule) => normalizeSearchText(schedule.name).includes(keyword));
-  }, [displaySchedules, search]);
+    return displaySchedules.filter((schedule) => {
+      if (keyword && !normalizeSearchText(schedule.name).includes(keyword)) return false;
+      if (repeatFilter !== ALL_REPEAT_TYPES && schedule.repeatType !== repeatFilter) return false;
+      if (dateFilter && !scheduleMatchesDate(schedule, dateFilter)) return false;
+      if (timeFromFilter && timeToFilter && !hasTimeOverlap(schedule.startTime, schedule.endTime, timeFromFilter, timeToFilter)) {
+        return false;
+      }
+      return true;
+    });
+  }, [dateFilter, displaySchedules, repeatFilter, search, timeFromFilter, timeToFilter]);
   const schedulePagination = usePagination(filteredSchedules.length);
   const pagedSchedules = useMemo(
     () => paginate(filteredSchedules, schedulePagination.page, schedulePagination.pageSize),
     [filteredSchedules, schedulePagination.page, schedulePagination.pageSize],
+  );
+  const hasScheduleFilters = Boolean(
+    search || repeatFilter !== ALL_REPEAT_TYPES || dateFilter || timeFromFilter || timeToFilter,
   );
 
   async function load() {
@@ -186,13 +201,21 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     }
   }
 
+  function resetScheduleFilters() {
+    setSearch('');
+    setRepeatFilter(ALL_REPEAT_TYPES);
+    setDateFilter('');
+    setTimeFromFilter('');
+    setTimeToFilter('');
+  }
+
   useEffect(() => {
     void load();
   }, []);
 
   useEffect(() => {
     schedulePagination.setPage(1);
-  }, [schedulePagination.setPage, search]);
+  }, [dateFilter, repeatFilter, schedulePagination.setPage, search, timeFromFilter, timeToFilter]);
 
   function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
     const message = getErrorMessage(error, fallback);
@@ -214,7 +237,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       {!loading ? (
         <>
           {schedules.length ? (
-            <div className="section-toolbar search-only">
+            <div className="section-toolbar schedule-filter-toolbar">
               <div className="toolbar-row">
                 <input
                   aria-label="Tìm theo tên lịch phát"
@@ -222,6 +245,43 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
+                <select
+                  aria-label="Lọc theo kiểu lặp"
+                  value={repeatFilter}
+                  onChange={(event) => setRepeatFilter(event.target.value as Schedule['repeatType'] | typeof ALL_REPEAT_TYPES)}
+                >
+                  <option value={ALL_REPEAT_TYPES}>Tất cả kiểu lặp</option>
+                  <option value="ONCE">Một lần</option>
+                  <option value="DAILY">Hằng ngày</option>
+                  <option value="WEEKLY">Hằng tuần</option>
+                  <option value="MONTHLY">Hằng tháng</option>
+                </select>
+                <input
+                  aria-label="Lọc theo ngày phát"
+                  type="date"
+                  value={dateFilter}
+                  onChange={(event) => setDateFilter(event.target.value)}
+                />
+                <div className="schedule-time-filter" aria-label="Lọc theo khung giờ">
+                  <input
+                    aria-label="Từ giờ"
+                    type="time"
+                    value={timeFromFilter}
+                    onChange={(event) => setTimeFromFilter(event.target.value)}
+                  />
+                  <span>đến</span>
+                  <input
+                    aria-label="Đến giờ"
+                    type="time"
+                    value={timeToFilter}
+                    onChange={(event) => setTimeToFilter(event.target.value)}
+                  />
+                </div>
+                {hasScheduleFilters ? (
+                  <button className="ghost" onClick={resetScheduleFilters} type="button">
+                    Xóa lọc
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -231,6 +291,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
             <table>
               <thead>
                 <tr>
+                  <th>STT</th>
                   <th>Tên lịch</th>
                   <th>Nguồn</th>
                   <th>Thời gian</th>
@@ -240,8 +301,9 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                 </tr>
               </thead>
               <tbody>
-                {pagedSchedules.map((schedule) => (
+                {pagedSchedules.map((schedule, index) => (
                   <tr key={schedule.scheduleId}>
+                    <td>{schedulePagination.pageSize * (schedulePagination.page - 1) + index + 1}</td>
                     <td>
                       <strong>{schedule.name}</strong>
                     </td>
@@ -453,4 +515,31 @@ function repeatLabel(value: Schedule['repeatType']) {
 
 function playbackRepeatLabel(value: number) {
   return `Phát lại ${value} lần`;
+}
+
+function scheduleMatchesDate(schedule: Schedule, date: string) {
+  if (date < schedule.startDate) return false;
+  if (schedule.repeatType === 'ONCE') return date === schedule.startDate;
+  if (schedule.repeatType === 'DAILY') return true;
+  if (schedule.repeatType === 'WEEKLY') return dayOfWeek(date) === dayOfWeek(schedule.startDate);
+  if (schedule.repeatType === 'MONTHLY') return dayOfMonth(date) === dayOfMonth(schedule.startDate);
+  return false;
+}
+
+function hasTimeOverlap(startA: string, endA: string, startB: string, endB: string) {
+  return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(startB) < timeToMinutes(endA);
+}
+
+function timeToMinutes(value: string) {
+  const [hour, minute] = value.slice(0, 5).split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function dayOfWeek(date: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+function dayOfMonth(date: string) {
+  return Number(date.split('-')[2]);
 }

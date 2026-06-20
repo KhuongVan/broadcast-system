@@ -471,6 +471,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                               type="checkbox"
                             />
                           </th>
+                          <th>STT</th>
                           <th>Tên thiết bị</th>
                           <th>Thời gian</th>
                           <th>Trạng thái phát</th>
@@ -483,11 +484,12 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                         </tr>
                       </thead>
                       <tbody>
-                        {pagedOperationDevices.map((device) => (
+                        {pagedOperationDevices.map((device, index) => (
                           <tr key={device.deviceId}>
                             <td className="select-col">
                               <input checked={selectedDeviceIds.has(device.deviceId)} onChange={(event) => toggleDevice(device.deviceId, event.target.checked)} type="checkbox" />
                             </td>
+                            <td>{(operationPagination.page - 1) * operationPagination.pageSize + index + 1}</td>
                             <DeviceNameCell device={device} />
                             <td>{formatLastSeenTime(device.lastSeenAt)}</td>
                             <td>
@@ -554,6 +556,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                   <table>
                     <thead>
                       <tr>
+                        <th>STT</th>
                         <th>Tên thiết bị</th>
                         <th>Khu vực</th>
                         <th>Dạng kết nối</th>
@@ -562,8 +565,9 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                       </tr>
                     </thead>
                     <tbody>
-                      {pagedSettingsDevices.map((device) => (
+                      {pagedSettingsDevices.map((device, index) => (
                         <tr key={device.deviceId}>
+                          <td>{(settingsPagination.page - 1) * settingsPagination.pageSize + index + 1}</td>
                           <DeviceNameCell device={device} />
                           <td>{device.area || '-'}</td>
                           <td>{getDeviceConnectionLabel(device)}</td>
@@ -660,6 +664,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
               <table>
                 <thead>
                   <tr>
+                    <th>STT</th>
                     <th>Thời gian</th>
                     <th>Thiết bị</th>
                     <th>Trạng thái</th>
@@ -667,8 +672,9 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedLogDevices.map((device) => (
+                  {pagedLogDevices.map((device, index) => (
                     <tr key={device.deviceId}>
+                      <td>{(logsPagination.page - 1) * logsPagination.pageSize + index + 1}</td>
                       <td>{formatDateTime(device.playbackUpdatedAt || device.lastSyncedAt || device.lastSeenAt || device.updatedAt)}</td>
                       <td>
                         <strong>{device.name}</strong>
@@ -732,7 +738,7 @@ function RecordingFilesTable({ recordings, loading, error }: { recordings: Devic
       <table>
         <thead>
           <tr>
-            <th>No</th>
+            <th>STT</th>
             <th>Tên file</th>
             <th>Thao tác</th>
           </tr>
@@ -788,6 +794,7 @@ function AssignedSchedulesTable({
       <table>
         <thead>
           <tr>
+            <th>STT</th>
             <th>Tên lịch</th>
             <th>Thời gian</th>
             <th>Lặp</th>
@@ -797,8 +804,9 @@ function AssignedSchedulesTable({
           </tr>
         </thead>
         <tbody>
-          {assignments.map((assignment) => (
+          {assignments.map((assignment, index) => (
             <tr key={assignment.assignmentId}>
+              <td>{index + 1}</td>
               <td>
                 <strong>{assignment.schedule.name}</strong>
               </td>

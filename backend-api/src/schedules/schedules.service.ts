@@ -128,10 +128,8 @@ export class SchedulesService {
 
     if (!conflict) return;
 
-    if (schedule.priority === 'EMERGENCY') {
-      throw new BadRequestException('Khung giờ này đã có lịch khẩn cấp khác.');
-    }
-    throw new BadRequestException('Khung giờ này đã có lịch thường khác.');
+    const priorityLabel = schedule.priority === 'EMERGENCY' ? 'lịch khẩn cấp' : 'lịch thường';
+    throw new BadRequestException(`Khung giờ này đã trùng với ${priorityLabel} "${conflict.name}" (${this.formatConflictSchedule(conflict)}).`);
   }
 
   private matchesRepeat(schedule: BroadcastScheduleRecord, localNow: LocalNow) {
@@ -157,6 +155,19 @@ export class SchedulesService {
 
   private hasTimeOverlap(startA: string, endA: string, startB: string, endB: string) {
     return this.timeToMinutes(startA) < this.timeToMinutes(endB) && this.timeToMinutes(startB) < this.timeToMinutes(endA);
+  }
+
+  private formatConflictSchedule(schedule: BroadcastScheduleRecord) {
+    return `${schedule.startDate} ${schedule.startTime.slice(0, 5)}-${schedule.endTime.slice(0, 5)}, ${this.repeatLabel(schedule.repeatType)}`;
+  }
+
+  private repeatLabel(value: ScheduleRepeatType) {
+    return {
+      ONCE: 'Một lần',
+      DAILY: 'Hằng ngày',
+      WEEKLY: 'Hằng tuần',
+      MONTHLY: 'Hằng tháng',
+    }[value];
   }
 
   private isDate(value: string) {

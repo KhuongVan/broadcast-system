@@ -471,6 +471,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
                 <table className="em-table">
                   <thead>
                     <tr>
+                      <th>STT</th>
                       <th>Nguồn</th>
                       <th>Thiết bị</th>
                       <th>Thời lượng</th>
@@ -481,8 +482,9 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedSessions.map((session) => (
+                    {pagedSessions.map((session, index) => (
                       <tr key={session.sessionId}>
+                        <td>{(historyPagination.page - 1) * historyPagination.pageSize + index + 1}</td>
                         <td>
                           <div className="em-history-name">{session.sourceName}</div>
                           <div className="em-history-url">{session.sourceUrl.length > 35 ? session.sourceUrl.slice(0, 35) + '…' : session.sourceUrl}</div>

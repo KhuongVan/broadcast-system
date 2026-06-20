@@ -110,6 +110,7 @@ export function FilesView({ embedded = false }: FilesViewProps) {
           <table>
             <thead>
               <tr>
+                <th>STT</th>
                 <th>Tên file</th>
                 <th>Định dạng</th>
                 <th>Dung lượng</th>
@@ -118,8 +119,9 @@ export function FilesView({ embedded = false }: FilesViewProps) {
               </tr>
             </thead>
             <tbody>
-              {pagedFiles.map((file) => (
+              {pagedFiles.map((file, index) => (
                 <tr key={file.fileId}>
+                  <td>{(filePagination.page - 1) * filePagination.pageSize + index + 1}</td>
                   <td>
                     <strong>{file.originalName}</strong>
                     <div className="subtext">{file.storagePath}</div>

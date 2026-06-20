@@ -1345,6 +1345,33 @@ audio {
   flex: 1;
 }
 
+.schedule-filter-toolbar .toolbar-row input,
+.schedule-filter-toolbar .toolbar-row select {
+  max-width: 220px;
+  min-width: 170px;
+}
+
+.schedule-filter-toolbar .toolbar-row > input:first-child {
+  max-width: 360px;
+  min-width: 240px;
+}
+
+.schedule-time-filter {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.schedule-time-filter input {
+  min-width: 120px;
+}
+
+.schedule-time-filter span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .section-toolbar-actions {
   align-items: center;
   display: flex;
