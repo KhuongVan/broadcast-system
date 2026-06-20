@@ -25,6 +25,8 @@ const emptyDevice: DeviceInput = {
   name: '',
   macAddress: '',
   simNumber: '',
+  receiverInstalledDate: null,
+  simRegisteredDate: null,
   area: '',
   latitude: null,
   longitude: null,
@@ -113,6 +115,8 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       name: device.name,
       macAddress: device.macAddress,
       simNumber: device.simNumber,
+      receiverInstalledDate: device.receiverInstalledDate,
+      simRegisteredDate: device.simRegisteredDate,
       area: device.area,
       latitude: device.latitude,
       longitude: device.longitude,
@@ -270,11 +274,27 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
 
   function exportDevicesCsv() {
     const rows = [
-      ['Tên thiết bị', 'MAC', 'Số SIM', 'Khu vực', 'Thời gian', 'Trạng thái kết nối', 'Loại kết nối', 'Network', 'Trạng thái phát', 'Lịch đã tải', 'Đồng bộ'],
+      [
+        'Tên thiết bị',
+        'MAC',
+        'Số SIM',
+        'Ngày lắp bộ thu',
+        'Ngày đăng ký SIM',
+        'Khu vực',
+        'Thời gian',
+        'Trạng thái kết nối',
+        'Loại kết nối',
+        'Network',
+        'Trạng thái phát',
+        'Lịch đã tải',
+        'Đồng bộ',
+      ],
       ...devices.map((device) => [
         device.name,
         device.macAddress,
         device.simNumber || '',
+        device.receiverInstalledDate || '',
+        device.simRegisteredDate || '',
         device.area,
         formatLastSeenTime(device.lastSeenAt),
         device.online ? 'Kết nối' : 'Mất kết nối',
@@ -548,6 +568,14 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                       <input value={form.simNumber || ''} onChange={(event) => update('simNumber', event.target.value || null)} placeholder="VD: 0987654321" />
                     </label>
                     <label>
+                      Ngày lắp bộ thu
+                      <input type="date" value={form.receiverInstalledDate || ''} onChange={(event) => update('receiverInstalledDate', event.target.value || null)} />
+                    </label>
+                    <label>
+                      Ngày đăng ký SIM
+                      <input type="date" value={form.simRegisteredDate || ''} onChange={(event) => update('simRegisteredDate', event.target.value || null)} />
+                    </label>
+                    <label>
                       Khu vực
                       <input value={form.area} onChange={(event) => update('area', event.target.value)} placeholder="Chưa phân khu" />
                     </label>
@@ -771,6 +799,8 @@ function getDeviceSearchValues(device: Device) {
     device.name,
     device.macAddress,
     device.simNumber,
+    device.receiverInstalledDate,
+    device.simRegisteredDate,
     device.area,
     device.connectionType,
     getConnectionTypeLabel(device.connectionType),
@@ -841,7 +871,7 @@ function escapeCsvCell(value: string) {
 async function readDeviceImportRows(file: File) {
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (extension === 'xlsx' || extension === 'xls') {
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) return [];
     return XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], {
@@ -907,16 +937,28 @@ function toDeviceInputsFromImportRows(rows: unknown[][]) {
 }
 
 function toDeviceInputFromImportRow(row: unknown[], header: string[], hasHeader: boolean, lineNumber: number): DeviceInput {
-  const valueByHeader = (names: string[]) => {
-    if (!hasHeader) return '';
+  const cellByHeader = (names: string[]) => {
+    if (!hasHeader) return undefined;
     const columnIndex = header.findIndex((value) => names.includes(value));
-    return columnIndex >= 0 ? normalizeImportCell(row[columnIndex]) : '';
+    return columnIndex >= 0 ? row[columnIndex] : undefined;
   };
+  const valueByHeader = (names: string[]) => normalizeImportCell(cellByHeader(names));
 
   const name = valueByHeader(nameHeaders) || normalizeImportCell(row[0]);
   const macAddress = valueByHeader(macHeaders) || normalizeImportCell(row[1]);
-  const simNumber = valueByHeader(['sim', 'sosim', 'simnumber']) || normalizeImportCell(row[2]);
-  const area = valueByHeader(['area', 'khuvuc']) || normalizeImportCell(row[3]);
+  const simNumber = valueByHeader(simNumberHeaders) || normalizeImportCell(row[2]);
+  const noHeaderHasDateColumns = !hasHeader && row.length >= 6;
+  const receiverInstalledDate = normalizeImportDate(
+    cellByHeader(receiverInstalledDateHeaders) ?? (noHeaderHasDateColumns ? row[3] : undefined),
+    lineNumber,
+    'Ngày lắp bộ thu',
+  );
+  const simRegisteredDate = normalizeImportDate(
+    cellByHeader(simRegisteredDateHeaders) ?? (noHeaderHasDateColumns ? row[4] : undefined),
+    lineNumber,
+    'Ngày đăng ký SIM',
+  );
+  const area = valueByHeader(['area', 'khuvuc']) || normalizeImportCell(row[noHeaderHasDateColumns ? 5 : 3]);
 
   if (!name || !macAddress) {
     throw new Error(`File nhập không đúng cấu trúc: dòng ${lineNumber} thiếu Tên thiết bị hoặc MAC.`);
@@ -926,6 +968,8 @@ function toDeviceInputFromImportRow(row: unknown[], header: string[], hasHeader:
     name,
     macAddress,
     simNumber: simNumber || null,
+    receiverInstalledDate,
+    simRegisteredDate,
     area,
     latitude: null,
     longitude: null,
@@ -934,6 +978,9 @@ function toDeviceInputFromImportRow(row: unknown[], header: string[], hasHeader:
 
 const nameHeaders = ['name', 'devicename', 'tenthietbi'];
 const macHeaders = ['mac', 'macaddress', 'diachimac'];
+const simNumberHeaders = ['sim', 'sosim', 'simnumber', 'sodienthoai', 'sdt', 'sodt', 'phone', 'phonenumber'];
+const receiverInstalledDateHeaders = ['ngaylapbothu', 'receiverinstalleddate', 'receiverinstallationdate', 'installeddate'];
+const simRegisteredDateHeaders = ['ngaydangkysim', 'simregistereddate', 'simregistrationdate'];
 
 function isNameHeader(value: string) {
   return nameHeaders.includes(value);
@@ -948,7 +995,48 @@ function isImportRowEmpty(row: unknown[]) {
 }
 
 function normalizeImportCell(value: unknown) {
+  if (value instanceof Date) return formatIsoDate(value);
   return String(value ?? '').trim();
+}
+
+function normalizeImportDate(value: unknown, lineNumber: number, label: string) {
+  if (value === undefined || value === null || value === '') return null;
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error(`File nhập không đúng cấu trúc: dòng ${lineNumber} ${label} không hợp lệ.`);
+    }
+    return formatIsoDate(value);
+  }
+
+  if (typeof value === 'number') {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (!parsed) throw new Error(`File nhập không đúng cấu trúc: dòng ${lineNumber} ${label} không hợp lệ.`);
+    return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+  }
+
+  const text = normalizeImportCell(value);
+  if (!text) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text) && isValidIsoDate(text)) return text;
+
+  const slashMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const date = `${slashMatch[3]}-${slashMatch[2].padStart(2, '0')}-${slashMatch[1].padStart(2, '0')}`;
+    if (isValidIsoDate(date)) return date;
+  }
+
+  throw new Error(`File nhập không đúng cấu trúc: dòng ${lineNumber} ${label} phải là YYYY-MM-DD hoặc DD/MM/YYYY.`);
+}
+
+function formatIsoDate(date: Date) {
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function isValidIsoDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function normalizeCsvHeader(value: unknown) {
@@ -1021,6 +1109,13 @@ function formatLastSeenTime(value: string | null) {
   if (Number.isNaN(date.getTime())) return '-';
   const pad = (part: number) => String(part).padStart(2, '0');
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatDateOnly(value: string | null) {
+  if (!value) return '-';
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) return '-';
+  return `${day}/${month}/${year}`;
 }
 
 const volumeLevels = Array.from({ length: 16 }, (_, index) => index);
@@ -1104,6 +1199,8 @@ function DeviceDetailPanel({ device }: { device: Device }) {
       <div className="device-detail-grid">
         <DetailItem label="MAC" value={device.macAddress} />
         <DetailItem label="Số SIM" value={device.simNumber || '-'} />
+        <DetailItem label="Ngày lắp bộ thu" value={formatDateOnly(device.receiverInstalledDate)} />
+        <DetailItem label="Ngày đăng ký SIM" value={formatDateOnly(device.simRegisteredDate)} />
         <DetailItem label="Android ID" value={device.androidId || '-'} />
         <DetailItem label="Khu vực" value={device.area || 'Chưa phân khu'} />
         <DetailItem label="Dạng kết nối" value={getDeviceConnectionLabel(device)} />

@@ -22,6 +22,8 @@ export type DeviceRecord = {
   name: string;
   macAddress: string;
   simNumber: string | null;
+  receiverInstalledDate: string | null;
+  simRegisteredDate: string | null;
   androidId: string | null;
   area: string;
   connectionType: DeviceConnectionType;
@@ -56,6 +58,8 @@ export type DeviceInput = {
   name: string;
   macAddress: string;
   simNumber: string | null;
+  receiverInstalledDate: string | null;
+  simRegisteredDate: string | null;
   area: string;
   connectionType?: DeviceConnectionType;
   latitude: number | null;

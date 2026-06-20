@@ -115,6 +115,8 @@ create table if not exists devices (
   name text not null,
   mac_address text not null unique,
   sim_number text,
+  receiver_installed_date date,
+  sim_registered_date date,
   android_id text,
   device_token_hash text,
   area text not null,
@@ -188,6 +190,12 @@ add column if not exists latitude double precision;
 
 alter table devices
 add column if not exists longitude double precision;
+
+alter table devices
+add column if not exists receiver_installed_date date;
+
+alter table devices
+add column if not exists sim_registered_date date;
 
 alter table devices
 alter column connection_type set default 'UNKNOWN';
@@ -481,3 +489,9 @@ on conflict (device_id, schedule_id) do nothing;
 
 alter table devices
 add column if not exists sim_number text;
+
+alter table devices
+add column if not exists receiver_installed_date date;
+
+alter table devices
+add column if not exists sim_registered_date date;

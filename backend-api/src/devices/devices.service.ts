@@ -175,6 +175,8 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     const name = String(input.name || '').trim();
     const macAddress = String(input.macAddress || '').trim().toUpperCase();
     const simNumber = String(input.simNumber || '').trim() || null;
+    const receiverInstalledDate = this.normalizeDate(input.receiverInstalledDate, 'Ngày lắp bộ thu');
+    const simRegisteredDate = this.normalizeDate(input.simRegisteredDate, 'Ngày đăng ký SIM');
     const area = String(input.area || '').trim() || 'Chưa phân khu';
     const connectionType =
       input.connectionType === 'LAN' || input.connectionType === '4G' || input.connectionType === 'UNKNOWN'
@@ -186,7 +188,22 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     if (!name) throw new BadRequestException('Vui long nhap ten thiet bi.');
     if (!macAddress) throw new BadRequestException('Vui long nhap dia chi MAC.');
 
-    return { name, macAddress, simNumber, area, connectionType, latitude, longitude };
+    return { name, macAddress, simNumber, receiverInstalledDate, simRegisteredDate, area, connectionType, latitude, longitude };
+  }
+
+  private normalizeDate(value: unknown, label: string) {
+    const date = String(value || '').trim();
+    if (!date) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException(`${label} phai co dinh dang YYYY-MM-DD.`);
+    }
+
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+      throw new BadRequestException(`${label} khong hop le.`);
+    }
+
+    return date;
   }
 
   private normalizeVolumeLevel(value: unknown) {

@@ -78,6 +78,8 @@ export type DeviceInput = {
   name: string;
   macAddress: string;
   simNumber: string | null;
+  receiverInstalledDate: string | null;
+  simRegisteredDate: string | null;
   area: string;
   latitude: number | null;
   longitude: number | null;
@@ -88,6 +90,8 @@ export type Device = {
   name: string;
   macAddress: string;
   simNumber: string | null;
+  receiverInstalledDate: string | null;
+  simRegisteredDate: string | null;
   androidId: string | null;
   area: string;
   connectionType: 'LAN' | '4G' | 'UNKNOWN';

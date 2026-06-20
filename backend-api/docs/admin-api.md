@@ -539,6 +539,8 @@ Device input:
   "name": "Loa Thôn 1",
   "macAddress": "22:22:E5:6C:16:F4",
   "simNumber": "0987654321",
+  "receiverInstalledDate": "2026-06-01",
+  "simRegisteredDate": "2026-06-05",
   "area": "Thôn 1"
 }
 ```
@@ -561,6 +563,8 @@ Response:
       "name": "Loa Thôn 1",
       "macAddress": "22:22:E5:6C:16:F4",
       "simNumber": "0987654321",
+      "receiverInstalledDate": "2026-06-01",
+      "simRegisteredDate": "2026-06-05",
       "androidId": null,
       "area": "Thôn 1",
       "connectionType": "4G",
@@ -612,7 +616,8 @@ POST /api/devices
 Content-Type: application/json
 ```
 
-Request: device input, including optional `simNumber`.
+Request: device input, including optional `simNumber`, `receiverInstalledDate`, and `simRegisteredDate`.
+When importing devices from Excel/CSV, headers such as `SIM`, `Số SIM`, `simNumber`, or `Số điện thoại` all map to the same `simNumber` field.
 
 ### Update device
 
@@ -621,7 +626,7 @@ PUT /api/devices/:deviceId
 Content-Type: application/json
 ```
 
-Request: device input, including optional `simNumber`.
+Request: device input, including optional `simNumber`, `receiverInstalledDate`, and `simRegisteredDate`.
 
 ### Delete device
 

@@ -79,6 +79,8 @@ type DeviceRow = {
   name: string;
   mac_address: string;
   sim_number: string | null;
+  receiver_installed_date: string | null;
+  sim_registered_date: string | null;
   android_id: string | null;
   device_token_hash: string | null;
   area: string;
@@ -1221,6 +1223,8 @@ export class StorageService {
         name: input.name,
         mac_address: input.macAddress,
         sim_number: input.simNumber,
+        receiver_installed_date: input.receiverInstalledDate,
+        sim_registered_date: input.simRegisteredDate,
         area: input.area,
         connection_type: input.connectionType || 'UNKNOWN',
         latitude: input.latitude,
@@ -1347,6 +1351,8 @@ export class StorageService {
         name: input.name,
         mac_address: input.macAddress,
         sim_number: input.simNumber,
+        receiver_installed_date: input.receiverInstalledDate,
+        sim_registered_date: input.simRegisteredDate,
         area: input.area,
         latitude: input.latitude,
         longitude: input.longitude,
@@ -1950,6 +1956,8 @@ export class StorageService {
       name: row.name,
       macAddress: row.mac_address,
       simNumber: row.sim_number || null,
+      receiverInstalledDate: row.receiver_installed_date || null,
+      simRegisteredDate: row.sim_registered_date || null,
       androidId: row.android_id || null,
       area: row.area,
       connectionType: row.connection_type,
