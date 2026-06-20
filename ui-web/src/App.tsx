@@ -25,7 +25,7 @@ export function App() {
 
 function AdminApp() {
   const [session, setSession] = useState<Session | null>(null);
-  const [activeView, setActiveView] = useState<ViewKey>('overview');
+  const [activeView, setActiveView] = useState<ViewKey>(() => getViewFromCurrentPath());
   const [loading, setLoading] = useState(true);
   const [prefillDeviceId, setPrefillDeviceId] = useState('');
   const [prefillTarget, setPrefillTarget] = useState<'emergency' | 'live' | null>(null);
@@ -43,13 +43,13 @@ function AdminApp() {
   function openEmergencyForDevice(deviceId: string) {
     setPrefillDeviceId(deviceId);
     setPrefillTarget('emergency');
-    setActiveView('emergency');
+    navigateToView('emergency');
   }
 
   function openLiveForDevice(deviceId: string) {
     setPrefillDeviceId(deviceId);
     setPrefillTarget('live');
-    setActiveView('live');
+    navigateToView('live');
   }
 
   function clearDevicePrefill() {
@@ -63,6 +63,23 @@ function AdminApp() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    function handlePopState() {
+      setActiveView(getViewFromCurrentPath());
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  function navigateToView(view: ViewKey) {
+    const path = getPathForView(view);
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, '', path);
+    }
+    setActiveView(view);
+  }
+
   if (loading) {
     return <div className="boot-screen">Đang kiểm tra phiên đăng nhập...</div>;
   }
@@ -73,12 +90,12 @@ function AdminApp() {
 
   return (
     <ToastProvider>
-      <Shell activeView={activeView} session={session} onChangeView={setActiveView} onLogout={() => void logout()}>
+      <Shell activeView={activeView} session={session} onChangeView={navigateToView} onLogout={() => void logout()}>
         {activeView === 'overview' ? <OverviewView /> : null}
         {activeView.startsWith('devices:') ? (
           <DevicesView
             activeSection={getDeviceSection(activeView)}
-            onChangeSection={(section) => setActiveView(`devices:${section}`)}
+            onChangeSection={(section) => navigateToView(`devices:${section}`)}
             onStartEmergency={openEmergencyForDevice}
             onStartLive={openLiveForDevice}
           />
@@ -121,4 +138,40 @@ function getScheduleTab(activeView: ViewKey) {
   if (activeView === 'schedules:playlists') return 'playlists';
   if (activeView === 'schedules:files') return 'files';
   return 'schedules';
+}
+
+const viewPathMap = {
+  overview: '/',
+  'devices:map': '/devices/map',
+  'devices:operate': '/devices/operate',
+  'devices:settings': '/devices/settings',
+  'devices:logs': '/devices/logs',
+  'schedules:schedules': '/schedules',
+  'schedules:playlists': '/schedules/playlists',
+  'schedules:files': '/schedules/files',
+  emergency: '/emergency',
+  live: '/live',
+  reports: '/reports',
+} satisfies Record<ViewKey, string>;
+
+const pathViewMap = new Map<string, ViewKey>(
+  Object.entries(viewPathMap).map(([view, path]) => [path, view as ViewKey]),
+);
+
+function getPathForView(view: ViewKey) {
+  return viewPathMap[view];
+}
+
+function getViewFromCurrentPath() {
+  const path = normalizePath(window.location.pathname);
+  const view = pathViewMap.get(path);
+  if (view) return view;
+
+  window.history.replaceState(null, '', '/');
+  return 'overview';
+}
+
+function normalizePath(path: string) {
+  if (path === '/') return path;
+  return path.replace(/\/+$/, '');
 }
