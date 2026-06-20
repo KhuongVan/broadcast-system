@@ -33,12 +33,11 @@ export class EmergencyBroadcastsService {
     const sourceId = (input.sourceId || '').trim();
     const deviceIds = Array.isArray(input.deviceIds) ? input.deviceIds.filter(Boolean) : [];
     const durationMinutes = Number(input.durationMinutes);
-    const validDurations = [15, 30, 60];
 
     if (!sourceId) throw new BadRequestException('Vui lòng chọn nguồn phát.');
     if (!deviceIds.length) throw new BadRequestException('Vui lòng chọn ít nhất 1 thiết bị.');
-    if (!validDurations.includes(durationMinutes)) {
-      throw new BadRequestException('Thời lượng phải là 15, 30 hoặc 60 phút.');
+    if (!Number.isFinite(durationMinutes) || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 300) {
+      throw new BadRequestException('Thời lượng phải là số phút từ 1 đến 300.');
     }
 
     const source = await this.storage.getEmergencySource(sourceId);

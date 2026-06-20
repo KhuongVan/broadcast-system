@@ -6,7 +6,8 @@ import { Pagination, paginate, usePagination } from './Pagination';
 import { useToast } from './Toast';
 
 const DURATION_OPTIONS = [15, 30, 60] as const;
-type DurationMinutes = (typeof DURATION_OPTIONS)[number];
+const MIN_DURATION_MINUTES = 1;
+const MAX_DURATION_MINUTES = 300;
 
 type EmergencyViewProps = {
   prefillDeviceId?: string;
@@ -29,7 +30,8 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
 
   // Broadcast control
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
-  const [durationMinutes, setDurationMinutes] = useState<DurationMinutes>(15);
+  const [durationMinutes, setDurationMinutes] = useState(15);
+  const [customDurationValue, setCustomDurationValue] = useState('15');
   const [deviceSearch, setDeviceSearch] = useState('');
 
   const activeSession = useMemo(() => sessions.find((s) => s.status === 'ACTIVE') || null, [sessions]);
@@ -57,6 +59,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
 
   const allFilteredSelected =
     filteredDevices.length > 0 && filteredDevices.every((d) => selectedDeviceIds.has(d.deviceId));
+  const durationValidationError = getDurationValidationError(customDurationValue);
 
   async function load() {
     setLoading(true);
@@ -167,9 +170,22 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
   }
 
   // ─── Broadcast ─────────────────────────────────────────────
+  function selectDurationPreset(duration: number) {
+    setDurationMinutes(duration);
+    setCustomDurationValue(String(duration));
+  }
+
+  function updateCustomDuration(value: string) {
+    setCustomDurationValue(value);
+    if (!getDurationValidationError(value)) {
+      setDurationMinutes(Number(value));
+    }
+  }
+
   async function playSource(source: EmergencySource) {
     if (!selectedDeviceIds.size) { showError('Vui lòng chọn ít nhất 1 thiết bị.'); return; }
     if (activeSession) { showError('Đang có phiên phát khẩn cấp. Vui lòng dừng trước.'); return; }
+    if (durationValidationError) { showError(durationValidationError); return; }
     setBusy(true);
     setError('');
     try {
@@ -341,13 +357,31 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
                 <button
                   className={`em-duration-btn ${durationMinutes === d ? 'active' : ''}`}
                   key={d}
-                  onClick={() => setDurationMinutes(d)}
+                  onClick={() => selectDurationPreset(d)}
                   type="button"
                 >
                   {d} phút
                 </button>
               ))}
+              <label className={`em-duration-custom ${durationValidationError ? 'invalid' : ''}`}>
+                <span className="em-duration-custom-label">Tùy chỉnh</span>
+                <span className="em-duration-custom-control">
+                  <input
+                    aria-invalid={Boolean(durationValidationError)}
+                    inputMode="numeric"
+                    max={MAX_DURATION_MINUTES}
+                    min={MIN_DURATION_MINUTES}
+                    onChange={(event) => updateCustomDuration(event.target.value)}
+                    pattern="[0-9]*"
+                    type="number"
+                    value={customDurationValue}
+                  />
+                  <span>phút</span>
+                </span>
+                <span className="em-duration-custom-help">Tối đa 300 phút</span>
+              </label>
             </div>
+            {durationValidationError ? <p className="em-duration-error">{durationValidationError}</p> : null}
             <p className="em-duration-hint">
               Thiết bị tự dừng sau <strong>{durationMinutes} phút</strong>. Có thể dừng thủ công sớm hơn.
             </p>
@@ -375,6 +409,7 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
               <div className="em-source-list">
                 {sources.map((source) => {
                   const canPlay = !activeSession && selectedDeviceIds.size > 0;
+                  const playDisabled = !canPlay || Boolean(durationValidationError);
                   return (
                     <div className="em-source-item" key={source.sourceId}>
                       <div className="em-source-left">
@@ -399,14 +434,16 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
                           Xóa
                         </button>
                         <button
-                          className={`em-play-btn ${!canPlay ? 'em-play-disabled' : ''}`}
-                          disabled={busy || !canPlay}
+                          className={`em-play-btn ${playDisabled ? 'em-play-disabled' : ''}`}
+                          disabled={busy || playDisabled}
                           onClick={() => void playSource(source)}
                           title={
                             activeSession
                               ? 'Đang có phiên khác đang phát'
                               : !selectedDeviceIds.size
                                 ? 'Chọn thiết bị trước'
+                                : durationValidationError
+                                  ? durationValidationError
                                 : `Phát ${source.name} đến ${selectedDeviceIds.size} thiết bị trong ${durationMinutes} phút`
                           }
                           type="button"
@@ -532,4 +569,15 @@ export function EmergencyView({ prefillDeviceId, onPrefillHandled }: EmergencyVi
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+}
+
+function getDurationValidationError(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return 'Vui lòng nhập thời lượng phát.';
+  if (!/^\d+$/.test(trimmed)) return 'Thời lượng phải là số phút nguyên.';
+  const duration = Number(trimmed);
+  if (duration < MIN_DURATION_MINUTES || duration > MAX_DURATION_MINUTES) {
+    return 'Thời lượng phải từ 1 đến 300 phút.';
+  }
+  return '';
 }

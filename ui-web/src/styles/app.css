@@ -2456,6 +2456,7 @@ audio {
 
 .em-duration-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 0 16px 12px;
 }
@@ -2484,6 +2485,70 @@ audio {
   border-color: #1458f5;
   color: #fff;
   box-shadow: 0 3px 10px rgba(20,88,245,0.3);
+}
+
+.em-duration-custom {
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 2px solid #e1e8f2;
+  border-radius: 8px;
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.em-duration-custom.invalid {
+  border-color: #ef4444;
+}
+
+.em-duration-custom-label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.em-duration-custom-control {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.em-duration-custom-control input {
+  background: transparent;
+  border: 0;
+  color: #0f172a;
+  flex: 1;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  min-width: 0;
+  outline: none;
+}
+
+.em-duration-custom-control span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.em-duration-custom-help {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.em-duration-error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  margin: -4px 16px 10px;
 }
 
 .em-duration-hint {
