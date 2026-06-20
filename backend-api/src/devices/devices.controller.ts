@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
 import { DeviceInput } from './device.types';
 import { DevicesService } from './devices.service';
@@ -51,6 +51,11 @@ export class DevicesController {
   @Get('/api/devices/:deviceId/recordings')
   async listRecordings(@Param('deviceId') deviceId: string) {
     return { recordings: await this.devices.listRecordings(deviceId) };
+  }
+
+  @Get('/api/devices/:deviceId/recording-segments')
+  async listRecordingSegments(@Param('deviceId') deviceId: string, @Query() query: { date?: string; sourceType?: string }) {
+    return { segments: await this.devices.listRecordingSegments(deviceId, query) };
   }
 
   @Post('/api/devices/:deviceId/recordings/start')

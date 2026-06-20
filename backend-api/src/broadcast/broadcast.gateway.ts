@@ -32,6 +32,7 @@ type LiveTargetPayload = {
   targetType?: 'AREA' | 'DEVICE';
   targetArea?: string | null;
   targetDeviceIds?: string[];
+  sessionId?: string | null;
 };
 
 type ClientRegisterDevicePayload = {
@@ -44,6 +45,7 @@ type ActiveLiveTarget = {
   targetType: 'AREA' | 'DEVICE';
   targetArea: string | null;
   targetDeviceIds: string[];
+  sessionId: string | null;
 };
 
 type ActivePlaylistSession = {
@@ -65,6 +67,18 @@ type EmergencyPlaybackPayload = {
   durationMinutes: number;
   sourceName: string;
   hlsUrl?: string;
+  recordingProof?: RecordingProofPayload;
+};
+
+type RecordingProofPayload = {
+  enabled: boolean;
+  sourceType: 'SCHEDULE' | 'LIVE' | 'EMERGENCY';
+  scheduleId?: string | null;
+  sessionId?: string | null;
+  segmentSeconds: number;
+  paddingBeforeSeconds: number;
+  paddingAfterSeconds: number;
+  audioProfile: string;
 };
 
 type ActiveEmergencySession = EmergencyPlaybackPayload & {
@@ -221,7 +235,11 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
         this.emitToLiveTarget({ action: 'STOP' });
         this.activeLiveTarget = null;
       });
-      this.emitToLiveTarget({ action: 'START', streamVersion: result.version });
+      this.emitToLiveTarget({
+        action: 'START',
+        streamVersion: result.version,
+        recordingProof: this.buildRecordingProofPayload('LIVE', { sessionId: target.sessionId }),
+      });
       client.emit('admin_status', { status: 'STARTED', type: 'MIC', streamVersion: result.version });
     } catch (error) {
       client.emit('admin_error', { message: error instanceof Error ? error.message : 'Khong phat duoc live mic.' });
@@ -464,6 +482,9 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       resetPosition,
       startOffsetSeconds: this.getCurrentPlaylistOffsetSeconds(),
       serverTimeMs: Date.now(),
+      recordingProof: this.activePlaylist.scheduleId
+        ? this.buildRecordingProofPayload('SCHEDULE', { scheduleId: this.activePlaylist.scheduleId })
+        : undefined,
     };
 
     if (target === this.server && this.activePlaylist.scheduleId) {
@@ -591,7 +612,11 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
           this.abortScheduleStartForEmergency();
           return false;
         }
-        this.emitScheduleClientUpdate({ action: 'START', streamVersion: result.version });
+        this.emitScheduleClientUpdate({
+          action: 'START',
+          streamVersion: result.version,
+          recordingProof: this.buildRecordingProofPayload('SCHEDULE', { scheduleId: schedule.scheduleId }),
+        });
       } else {
         if (this.hasActiveEmergency()) return false;
         await this.startFileSchedule(schedule, resetPosition);
@@ -695,6 +720,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
         resetPosition,
         startOffsetSeconds: pausedOffsetSeconds,
         serverTimeMs: Date.now(),
+        recordingProof: this.buildRecordingProofPayload('SCHEDULE', { scheduleId: schedule.scheduleId }),
       });
       return;
     }
@@ -766,20 +792,21 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private normalizeLiveTarget(payload: LiveTargetPayload = {}): ActiveLiveTarget {
     const targetType = payload.targetType === 'AREA' ? 'AREA' : 'DEVICE';
     const targetArea = String(payload.targetArea || '').trim();
+    const sessionId = String(payload.sessionId || '').trim() || null;
     const targetDeviceIds = Array.isArray(payload.targetDeviceIds)
       ? payload.targetDeviceIds.map((deviceId) => String(deviceId || '').trim()).filter(Boolean)
       : [];
 
     if (targetType === 'AREA') {
       if (!targetArea) throw new Error('Vui lòng chọn địa bàn phát.');
-      return { targetType, targetArea, targetDeviceIds: [] };
+      return { targetType, targetArea, targetDeviceIds: [], sessionId };
     }
 
     if (!targetDeviceIds.length) throw new Error('Vui lòng chọn thiết bị phát.');
-    return { targetType, targetArea: null, targetDeviceIds };
+    return { targetType, targetArea: null, targetDeviceIds, sessionId };
   }
 
-  private emitToLiveTarget(payload: { action: 'START' | 'STOP'; streamVersion?: number }) {
+  private emitToLiveTarget(payload: { action: 'START' | 'STOP'; streamVersion?: number; recordingProof?: RecordingProofPayload }) {
     const target = this.activeLiveTarget;
     if (!target) {
       this.server.emit('client_update', payload);
@@ -796,7 +823,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
   }
 
-  private emitScheduleClientUpdate(payload: { action: 'START' | 'STOP'; streamVersion?: number }) {
+  private emitScheduleClientUpdate(payload: { action: 'START' | 'STOP'; streamVersion?: number; recordingProof?: RecordingProofPayload }) {
     for (const deviceId of this.activeScheduleDeviceIds) {
       this.server.to(this.deviceRoom(deviceId)).emit('client_update', payload);
     }
@@ -808,6 +835,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     resetPosition: boolean;
     startOffsetSeconds: number;
     serverTimeMs: number;
+    recordingProof?: RecordingProofPayload;
   }): void;
   private emitToActiveScheduleDevices(
     event: 'STOP' | 'PLAY_CACHED',
@@ -816,6 +844,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       resetPosition: boolean;
       startOffsetSeconds: number;
       serverTimeMs: number;
+      recordingProof?: RecordingProofPayload;
     },
   ) {
     for (const deviceId of this.activeScheduleDeviceIds) {
@@ -835,6 +864,22 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     this.clearActiveSchedule();
     this.activeLiveTarget = null;
     this.emitScheduleStatus();
+  }
+
+  private buildRecordingProofPayload(
+    sourceType: RecordingProofPayload['sourceType'],
+    input: { scheduleId?: string | null; sessionId?: string | null } = {},
+  ): RecordingProofPayload {
+    return {
+      enabled: config.recordingProofEnabled,
+      sourceType,
+      scheduleId: input.scheduleId || null,
+      sessionId: input.sessionId || null,
+      segmentSeconds: config.recordingProofSegmentSeconds,
+      paddingBeforeSeconds: config.recordingProofPaddingBeforeSeconds,
+      paddingAfterSeconds: config.recordingProofPaddingAfterSeconds,
+      audioProfile: config.recordingProofAudioProfile,
+    };
   }
 
   private socketMatchesLiveTarget(deviceId: string, area: string) {

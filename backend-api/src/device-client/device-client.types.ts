@@ -51,6 +51,18 @@ export type DeviceClientPlaybackRecordingUploadBody = {
   message?: string;
 };
 
+export type DeviceClientRecordingSegmentUploadBody = {
+  sourceType?: 'SCHEDULE' | 'LIVE' | 'EMERGENCY';
+  scheduleId?: string;
+  sessionId?: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationSeconds?: number | string;
+  segmentIndex?: number | string;
+  isFinalSegment?: boolean | string;
+  message?: string;
+};
+
 export type DeviceClientCommandResultBody = {
   commandId?: string;
   status?: 'SUCCEEDED' | 'FAILED';

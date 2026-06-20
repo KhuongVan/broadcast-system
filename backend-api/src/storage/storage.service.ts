@@ -187,6 +187,30 @@ type DeviceRecordingSessionRow = {
   updated_at: string;
 };
 
+type RecordingProofSourceType = 'SCHEDULE' | 'LIVE' | 'EMERGENCY';
+
+type DeviceRecordingSegmentRow = {
+  segment_id: string;
+  device_id: string;
+  source_type: RecordingProofSourceType;
+  schedule_id: string | null;
+  session_id: string | null;
+  file_name: string;
+  storage_path: string;
+  mimetype: string;
+  size: number;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number | null;
+  segment_index: number;
+  is_final_segment: boolean;
+  message: string | null;
+  uploaded_at: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type LiveBroadcastSessionRow = {
   session_id: string;
   title: string;
@@ -277,6 +301,29 @@ export type DeviceRecordingSessionRecord = {
   size: number | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type DeviceRecordingSegmentRecord = {
+  segmentId: string;
+  deviceId: string;
+  sourceType: RecordingProofSourceType;
+  scheduleId: string | null;
+  sessionId: string | null;
+  fileName: string;
+  storagePath: string;
+  mimetype: string;
+  size: number;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number | null;
+  segmentIndex: number;
+  isFinalSegment: boolean;
+  message: string | null;
+  uploadedAt: string;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  audioUrl: string | null;
 };
 
 @Injectable()
@@ -522,6 +569,141 @@ export class StorageService {
     return this.toDeviceRecordingSessionRecord(data as DeviceRecordingSessionRow);
   }
 
+  async uploadDeviceRecordingSegment(input: {
+    deviceId: string;
+    file: Express.Multer.File;
+    fileName: string;
+    extension: string;
+    sourceType: RecordingProofSourceType;
+    scheduleId: string | null;
+    sessionId: string | null;
+    startedAt: string;
+    endedAt: string;
+    durationSeconds: number | null;
+    segmentIndex: number;
+    isFinalSegment: boolean;
+    message: string | null;
+  }) {
+    if (!input.file.buffer) {
+      throw new Error('Upload phai dung memory storage de gui len Supabase.');
+    }
+
+    const segmentId = randomUUID();
+    const extension = input.extension.startsWith('.') ? input.extension : `.${input.extension}`;
+    const dateFolder = input.startedAt.slice(0, 10);
+    const sourceFolder = input.sourceType.toLowerCase();
+    const safeStartedAt = input.startedAt.replace(/[:.]/g, '-');
+    const storagePath = `recordings/${input.deviceId}/${dateFolder}/${sourceFolder}/${safeStartedAt}-seg-${input.segmentIndex}-${segmentId}${extension}`;
+
+    const { error: uploadError } = await this.supabase.storage
+      .from(this.bucket)
+      .upload(storagePath, input.file.buffer, {
+        contentType: input.file.mimetype || 'application/octet-stream',
+        cacheControl: '86400',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(`Khong upload duoc file ghi am bang chung: ${uploadError.message}`);
+    }
+
+    const now = new Date().toISOString();
+    const row = {
+      segment_id: segmentId,
+      device_id: input.deviceId,
+      source_type: input.sourceType,
+      schedule_id: input.scheduleId,
+      session_id: input.sessionId,
+      file_name: input.fileName,
+      storage_path: storagePath,
+      mimetype: input.file.mimetype || 'application/octet-stream',
+      size: input.file.size,
+      started_at: input.startedAt,
+      ended_at: input.endedAt,
+      duration_seconds: input.durationSeconds,
+      segment_index: input.segmentIndex,
+      is_final_segment: input.isFinalSegment,
+      message: input.message,
+      uploaded_at: now,
+      updated_at: now,
+    };
+
+    const { data, error: insertError } = await this.supabase
+      .from('device_recording_segments')
+      .insert(row)
+      .select('*')
+      .maybeSingle();
+
+    if (insertError) {
+      await this.supabase.storage.from(this.bucket).remove([storagePath]);
+      throw new Error(`Khong ghi metadata file ghi am bang chung: ${insertError.message}`);
+    }
+
+    if (!data) throw new Error('Khong tao duoc metadata file ghi am bang chung.');
+    return this.toDeviceRecordingSegmentRecord(data as DeviceRecordingSegmentRow);
+  }
+
+  async listDeviceRecordingSegments(deviceId: string, date: string, sourceType?: RecordingProofSourceType | null) {
+    const dayStart = `${date}T00:00:00.000Z`;
+    const nextDay = new Date(`${date}T00:00:00.000Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+    let query = this.supabase
+      .from('device_recording_segments')
+      .select('*')
+      .eq('device_id', deviceId)
+      .is('deleted_at', null)
+      .gte('started_at', dayStart)
+      .lt('started_at', nextDay.toISOString())
+      .order('started_at', { ascending: true })
+      .order('segment_index', { ascending: true });
+
+    if (sourceType) query = query.eq('source_type', sourceType);
+
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`Khong doc duoc danh sach ghi am bang chung: ${error.message}`);
+    }
+
+    return Promise.all(((data || []) as DeviceRecordingSegmentRow[]).map((row) => this.toDeviceRecordingSegmentRecord(row)));
+  }
+
+  async cleanupExpiredRecordingSegments(retentionDays = config.recordingProofRetentionDays, batchSize = 500) {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await this.supabase
+      .from('device_recording_segments')
+      .select('*')
+      .is('deleted_at', null)
+      .lt('started_at', cutoff)
+      .order('started_at', { ascending: true })
+      .limit(batchSize);
+
+    if (error) {
+      throw new Error(`Khong doc duoc file ghi am het han: ${error.message}`);
+    }
+
+    const rows = (data || []) as DeviceRecordingSegmentRow[];
+    if (!rows.length) return { deleted: 0 };
+
+    const storagePaths = rows.map((row) => row.storage_path);
+    const { error: removeError } = await this.supabase.storage.from(this.bucket).remove(storagePaths);
+    if (removeError) {
+      throw new Error(`Khong xoa duoc file ghi am het han: ${removeError.message}`);
+    }
+
+    const now = new Date().toISOString();
+    const { error: updateError } = await this.supabase
+      .from('device_recording_segments')
+      .update({ deleted_at: now, updated_at: now })
+      .in('segment_id', rows.map((row) => row.segment_id));
+
+    if (updateError) {
+      throw new Error(`Khong cap nhat metadata file ghi am da xoa: ${updateError.message}`);
+    }
+
+    return { deleted: rows.length };
+  }
+
   async startDeviceRecording(deviceId: string, maxDurationSeconds: number) {
     await this.expireStaleDeviceRecordings(deviceId, maxDurationSeconds);
     const active = await this.getActiveDeviceRecording(deviceId);
@@ -741,6 +923,31 @@ export class StorageService {
       size: upload ? Number(upload.size) : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  private async toDeviceRecordingSegmentRecord(row: DeviceRecordingSegmentRow): Promise<DeviceRecordingSegmentRecord> {
+    return {
+      segmentId: row.segment_id,
+      deviceId: row.device_id,
+      sourceType: row.source_type,
+      scheduleId: row.schedule_id || null,
+      sessionId: row.session_id || null,
+      fileName: row.file_name,
+      storagePath: row.storage_path,
+      mimetype: row.mimetype,
+      size: Number(row.size),
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
+      durationSeconds: row.duration_seconds,
+      segmentIndex: row.segment_index,
+      isFinalSegment: row.is_final_segment,
+      message: row.message,
+      uploadedAt: row.uploaded_at,
+      deletedAt: row.deleted_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      audioUrl: row.deleted_at ? null : await this.createSignedUrl(row.storage_path),
     };
   }
 

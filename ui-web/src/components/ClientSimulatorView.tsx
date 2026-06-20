@@ -33,6 +33,7 @@ type ClientUpdatePayload = {
   action: 'START' | 'STOP';
   streamVersion?: number;
   hlsUrl?: string;
+  recordingProof?: RecordingProofPayload;
 };
 
 type EmergencyPayload = {
@@ -41,6 +42,7 @@ type EmergencyPayload = {
   durationMinutes?: number;
   sourceName?: string;
   hlsUrl?: string;
+  recordingProof?: RecordingProofPayload;
 };
 
 type CachedPlaybackPayload = {
@@ -48,6 +50,7 @@ type CachedPlaybackPayload = {
   resetPosition?: boolean;
   startOffsetSeconds?: number;
   serverTimeMs?: number;
+  recordingProof?: RecordingProofPayload;
 };
 
 type CachedRecord = AudioFile & {
@@ -75,15 +78,29 @@ type HlsConstructor = {
 type PlaybackRecordingMetadata = {
   label: string;
   fileId?: string;
+  recordingProof?: RecordingProofPayload;
 };
 
 type PlaybackRecordingState = {
   recorder: MediaRecorder;
-  chunks: Blob[];
   startedAt: string;
-  timer: number | null;
+  currentSegmentStartedAt: string;
+  segmentIndex: number;
+  segmentSeconds: number;
+  stoppingFinal: boolean;
   stream: MediaStream;
   metadata: PlaybackRecordingMetadata;
+};
+
+type RecordingProofPayload = {
+  enabled?: boolean;
+  sourceType?: 'SCHEDULE' | 'LIVE' | 'EMERGENCY';
+  scheduleId?: string | null;
+  sessionId?: string | null;
+  segmentSeconds?: number;
+  paddingBeforeSeconds?: number;
+  paddingAfterSeconds?: number;
+  audioProfile?: string;
 };
 
 declare global {
@@ -165,7 +182,7 @@ export function ClientSimulatorView() {
     });
     socket.on('STOP', stopPlayback);
     socket.on('client_update', (data: ClientUpdatePayload) => {
-      if (data.action === 'START') void startHlsPlayer(data.streamVersion, 'Phát trực tiếp', data.hlsUrl);
+      if (data.action === 'START') void startHlsPlayer(data.streamVersion, 'Phát trực tiếp', data.hlsUrl, data.recordingProof);
       if (data.action === 'STOP') stopPlayback();
     });
     socket.on('PLAY_EMERGENCY', (data: EmergencyPayload) => {
@@ -387,7 +404,7 @@ export function ClientSimulatorView() {
       socketRef.current?.emit('client_file_ended', { fileId });
     };
 
-    void playAudio('ĐANG PHÁT THANH...', record.originalName, { label: record.originalName, fileId });
+    void playAudio('ĐANG PHÁT THANH...', record.originalName, { label: record.originalName, fileId, recordingProof: data.recordingProof });
   }
 
   async function findFileInCatalog(fileId: string) {
@@ -397,7 +414,7 @@ export function ClientSimulatorView() {
     return (data.files || []).find((file) => file.fileId === fileId) || null;
   }
 
-  async function startHlsPlayer(version?: string | number, label = 'Phát trực tiếp', hlsUrl?: string) {
+  async function startHlsPlayer(version?: string | number, label = 'Phát trực tiếp', hlsUrl?: string, recordingProof?: RecordingProofPayload) {
     cleanupLocalAudio();
     cleanupHls();
     currentStreamVersionRef.current = version || Date.now();
@@ -414,7 +431,7 @@ export function ClientSimulatorView() {
       setCurrentName(label);
       const retryVersion = currentStreamVersionRef.current;
       retryTimerRef.current = window.setTimeout(() => {
-        if (retryVersion === currentStreamVersionRef.current) void startHlsPlayer(retryVersion || undefined, label, hlsUrl);
+        if (retryVersion === currentStreamVersionRef.current) void startHlsPlayer(retryVersion || undefined, label, hlsUrl, recordingProof);
       }, 1000);
       return;
     }
@@ -423,7 +440,7 @@ export function ClientSimulatorView() {
     if (!Hls.isSupported()) {
       if (audio.canPlayType('application/vnd.apple.mpegurl')) {
         audio.src = streamUrl;
-        await playAudio('ĐANG PHÁT THANH...', label, { label });
+        await playAudio('ĐANG PHÁT THANH...', label, { label, recordingProof });
         return;
       }
       setStatus('TRÌNH DUYỆT KHÔNG HỖ TRỢ HLS');
@@ -444,7 +461,7 @@ export function ClientSimulatorView() {
 
     const startVersion = currentStreamVersionRef.current;
     connectTimerRef.current = window.setTimeout(() => {
-      if (startVersion === currentStreamVersionRef.current) void startHlsPlayer(startVersion, label, hlsUrl);
+      if (startVersion === currentStreamVersionRef.current) void startHlsPlayer(startVersion, label, hlsUrl, recordingProof);
     }, 5000);
 
     hls.on(Hls.Events.MANIFEST_LOADED, () => {
@@ -453,7 +470,7 @@ export function ClientSimulatorView() {
     });
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       clearConnectTimer();
-      void playAudio('ĐANG PHÁT THANH...', label, { label });
+      void playAudio('ĐANG PHÁT THANH...', label, { label, recordingProof });
     });
     hls.on(Hls.Events.ERROR, (_event: unknown, errorData: { fatal?: boolean; details?: string; type?: string }) => {
       if (!errorData.fatal) return;
@@ -463,7 +480,7 @@ export function ClientSimulatorView() {
       setCurrentName(label);
       cleanupHls();
       retryTimerRef.current = window.setTimeout(() => {
-        if (retryVersion === currentStreamVersionRef.current) void startHlsPlayer(retryVersion || undefined, label, hlsUrl);
+        if (retryVersion === currentStreamVersionRef.current) void startHlsPlayer(retryVersion || undefined, label, hlsUrl, recordingProof);
       }, 1000);
     });
   }
@@ -485,6 +502,8 @@ export function ClientSimulatorView() {
   }
 
   async function startPlaybackRecording(metadata: PlaybackRecordingMetadata) {
+    const recordingProof = metadata.recordingProof;
+    if (!recordingProof?.enabled || !recordingProof.sourceType) return;
     if (!deviceTokenRef.current || playbackRecordingRef.current || typeof MediaRecorder === 'undefined') return;
 
     try {
@@ -493,28 +512,38 @@ export function ClientSimulatorView() {
 
       const mimeType = getRecordingMimeType();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const startedAt = new Date().toISOString();
+      const segmentSeconds = Math.max(10, Number(recordingProof.segmentSeconds) || 900);
       const state: PlaybackRecordingState = {
         recorder,
-        chunks: [],
-        startedAt: new Date().toISOString(),
-        timer: null,
+        startedAt,
+        currentSegmentStartedAt: startedAt,
+        segmentIndex: 0,
+        segmentSeconds,
+        stoppingFinal: false,
         stream,
         metadata,
       };
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size) state.chunks.push(event.data);
+        if (!event.data.size) return;
+        const endedAt = new Date().toISOString();
+        const segmentStartedAt = state.currentSegmentStartedAt;
+        const segmentIndex = state.segmentIndex;
+        const isFinalSegment = state.stoppingFinal || recorder.state === 'inactive';
+        state.currentSegmentStartedAt = endedAt;
+        state.segmentIndex += 1;
+        uploadRecordingSegment(state, event.data, segmentStartedAt, endedAt, segmentIndex, isFinalSegment).catch((error) =>
+          console.warn(`Recording segment upload failed: ${getErrorMessage(error)}`),
+        );
       };
       recorder.onstop = () => {
-        if (state.timer) window.clearTimeout(state.timer);
         state.stream.getTracks().forEach((track) => track.stop());
         if (playbackRecordingRef.current === state) playbackRecordingRef.current = null;
-        uploadPlaybackRecording(state).catch((error) => console.warn(`Playback recording upload failed: ${getErrorMessage(error)}`));
       };
 
       playbackRecordingRef.current = state;
-      recorder.start();
-      state.timer = window.setTimeout(stopPlaybackRecording, 60_000);
+      recorder.start(segmentSeconds * 1000);
     } catch (error) {
       console.warn(`Playback recording skipped: ${getErrorMessage(error)}`);
     }
@@ -532,8 +561,7 @@ export function ClientSimulatorView() {
   function stopPlaybackRecording() {
     const state = playbackRecordingRef.current;
     if (!state) return;
-    if (state.timer) window.clearTimeout(state.timer);
-    state.timer = null;
+    state.stoppingFinal = true;
     if (state.recorder.state !== 'inactive') {
       state.recorder.stop();
       return;
@@ -541,26 +569,33 @@ export function ClientSimulatorView() {
     playbackRecordingRef.current = null;
   }
 
-  async function uploadPlaybackRecording(state: PlaybackRecordingState) {
-    if (!state.chunks.length || !deviceTokenRef.current) return;
-
-    const endedAt = new Date().toISOString();
-    const blob = new Blob(state.chunks, { type: state.recorder.mimeType || 'audio/webm' });
+  async function uploadRecordingSegment(
+    state: PlaybackRecordingState,
+    blob: Blob,
+    startedAt: string,
+    endedAt: string,
+    segmentIndex: number,
+    isFinalSegment: boolean,
+  ) {
+    if (!deviceTokenRef.current || !state.metadata.recordingProof?.sourceType) return;
     if (!blob.size) return;
 
     const extension = getRecordingExtension(blob.type);
-    const fileName = `${new Date(state.startedAt).toISOString().replace(/[:.]/g, '-')}-${state.metadata.label.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 48) || 'recording'}${extension}`;
-    const durationSeconds = Math.max(1, Math.round((new Date(endedAt).getTime() - new Date(state.startedAt).getTime()) / 1000));
+    const fileName = `${new Date(startedAt).toISOString().replace(/[:.]/g, '-')}-${state.metadata.label.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 48) || 'recording'}-seg-${segmentIndex}${extension}`;
+    const durationSeconds = Math.max(1, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000));
     const formData = new FormData();
     formData.append('audio', blob, fileName);
-    formData.append('startedAt', state.startedAt);
+    formData.append('sourceType', state.metadata.recordingProof.sourceType);
+    formData.append('startedAt', startedAt);
     formData.append('endedAt', endedAt);
     formData.append('durationSeconds', String(durationSeconds));
-    formData.append('playStatus', 'PLAYING');
-    formData.append('message', `Browser simulator tự ghi bằng chứng phát: ${state.metadata.label}`);
-    if (state.metadata.fileId) formData.append('fileId', state.metadata.fileId);
+    formData.append('segmentIndex', String(segmentIndex));
+    formData.append('isFinalSegment', String(isFinalSegment));
+    formData.append('message', `Browser simulator ghi bằng chứng phát: ${state.metadata.label}`);
+    if (state.metadata.recordingProof.scheduleId) formData.append('scheduleId', state.metadata.recordingProof.scheduleId);
+    if (state.metadata.recordingProof.sessionId) formData.append('sessionId', state.metadata.recordingProof.sessionId);
 
-    const response = await fetch('/api/device-client/playback-recording-upload', {
+    const response = await fetch('/api/device-client/recording-segment-upload', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${deviceTokenRef.current}`,
@@ -576,7 +611,7 @@ export function ClientSimulatorView() {
   function startEmergencyPlayer(data: EmergencyPayload) {
     stopEmergencyPlayer();
     setStatus('PHÁT KHẨN CẤP...');
-    void startHlsPlayer(data.streamVersion, `Phát khẩn cấp: ${data.sourceName || 'Nguồn khẩn cấp'}`, data.hlsUrl);
+    void startHlsPlayer(data.streamVersion, `Phát khẩn cấp: ${data.sourceName || 'Nguồn khẩn cấp'}`, data.hlsUrl, data.recordingProof);
     if (data.durationMinutes && data.durationMinutes > 0) {
       emergencyTimerRef.current = window.setTimeout(stopEmergencyPlayer, data.durationMinutes * 60 * 1000);
     }

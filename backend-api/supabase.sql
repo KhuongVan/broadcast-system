@@ -401,6 +401,36 @@ begin
   end if;
 end $$;
 
+create table if not exists device_recording_segments (
+  segment_id uuid primary key default gen_random_uuid(),
+  device_id uuid not null references devices(device_id) on delete cascade,
+  source_type text not null check (source_type in ('SCHEDULE', 'LIVE', 'EMERGENCY')),
+  schedule_id uuid references broadcast_schedules(schedule_id) on delete set null,
+  session_id uuid,
+  file_name text not null,
+  storage_path text not null unique,
+  mimetype text not null,
+  size bigint not null,
+  started_at timestamptz not null,
+  ended_at timestamptz not null,
+  duration_seconds int,
+  segment_index int not null default 0,
+  is_final_segment boolean not null default false,
+  message text,
+  uploaded_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_device_recording_segments_device_started
+on device_recording_segments(device_id, started_at desc)
+where deleted_at is null;
+
+create index if not exists idx_device_recording_segments_cleanup
+on device_recording_segments(started_at)
+where deleted_at is null;
+
 create table if not exists device_schedule_assignments (
   assignment_id uuid primary key default gen_random_uuid(),
   device_id uuid not null references devices(device_id) on delete cascade,

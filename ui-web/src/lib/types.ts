@@ -159,6 +159,31 @@ export type DeviceRecordingSession = {
   updatedAt: string;
 };
 
+export type RecordingProofSourceType = 'SCHEDULE' | 'LIVE' | 'EMERGENCY';
+
+export type DeviceRecordingSegment = {
+  segmentId: string;
+  deviceId: string;
+  sourceType: RecordingProofSourceType;
+  scheduleId: string | null;
+  sessionId: string | null;
+  fileName: string;
+  storagePath: string;
+  mimetype: string;
+  size: number;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number | null;
+  segmentIndex: number;
+  isFinalSegment: boolean;
+  message: string | null;
+  uploadedAt: string;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  audioUrl: string | null;
+};
+
 export type TtsVoice = {
   code: string;
   label: string;

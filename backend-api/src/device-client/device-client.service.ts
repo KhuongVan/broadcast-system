@@ -12,6 +12,7 @@ import {
   DeviceClientPlaybackRecordingUploadBody,
   DeviceClientPlaybackStateBody,
   DeviceClientRecordingStatusBody,
+  DeviceClientRecordingSegmentUploadBody,
   DeviceClientRegisterBody,
   DeviceClientSyncResultBody,
 } from './device-client.types';
@@ -120,6 +121,7 @@ export class DeviceClientService {
       webviewUrl: '/client',
       hlsUrl: this.getPublicHlsUrl(),
       pollIntervalSeconds: POLL_INTERVAL_SECONDS,
+      recordingProof: this.getRecordingProofConfig(),
     };
   }
 
@@ -231,6 +233,45 @@ export class DeviceClientService {
     };
   }
 
+  async uploadRecordingSegment(device: DeviceRecord, body: DeviceClientRecordingSegmentUploadBody, file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Vui long gui file audio trong field "audio".');
+    this.ensureMicTestFileAllowed(file);
+
+    const sourceType = this.normalizeRecordingProofSourceType(body.sourceType);
+    const startedAt = this.requiredIsoDate(body.startedAt, 'startedAt');
+    const endedAt = this.requiredIsoDate(body.endedAt, 'endedAt');
+    if (new Date(endedAt).getTime() <= new Date(startedAt).getTime()) {
+      throw new BadRequestException('endedAt phai lon hon startedAt.');
+    }
+
+    const durationSeconds = this.normalizeDurationSeconds(body.durationSeconds);
+    if (durationSeconds !== null && durationSeconds > config.recordingProofSegmentSeconds + 120) {
+      throw new BadRequestException('Thoi luong segment vuot qua gioi han cho phep.');
+    }
+
+    const segmentIndex = this.normalizeSegmentIndex(body.segmentIndex);
+    const segment = await this.storage.uploadDeviceRecordingSegment({
+      deviceId: device.deviceId,
+      file,
+      fileName: this.safeFileName(file.originalname || this.buildRecordingSegmentFileName(sourceType, startedAt, segmentIndex, file)),
+      extension: this.getMicTestExtension(file),
+      sourceType,
+      scheduleId: sourceType === 'SCHEDULE' ? this.optionalUuid(body.scheduleId) : null,
+      sessionId: sourceType === 'LIVE' || sourceType === 'EMERGENCY' ? this.optionalUuid(body.sessionId) : null,
+      startedAt,
+      endedAt,
+      durationSeconds,
+      segmentIndex,
+      isFinalSegment: this.normalizeBoolean(body.isFinalSegment),
+      message: this.optionalText(body.message),
+    });
+
+    return {
+      segment,
+      serverTime: this.serverTime(),
+    };
+  }
+
   async getCommands(device: DeviceRecord) {
     const command = await this.storage.getPendingDeviceCommand(device.deviceId);
     if (command) {
@@ -336,6 +377,12 @@ export class DeviceClientService {
     throw new BadRequestException('recording status chi ho tro RECORDING, UPLOADING hoac FAILED.');
   }
 
+  private normalizeRecordingProofSourceType(value: unknown) {
+    const sourceType = String(value || '').trim().toUpperCase();
+    if (sourceType === 'SCHEDULE' || sourceType === 'LIVE' || sourceType === 'EMERGENCY') return sourceType;
+    throw new BadRequestException('sourceType chi ho tro SCHEDULE, LIVE hoac EMERGENCY.');
+  }
+
   private normalizeVolumeLevel(value: unknown) {
     const volumeLevel = Number(value);
     if (!Number.isInteger(volumeLevel) || volumeLevel < 0 || volumeLevel > 15) {
@@ -359,6 +406,18 @@ export class DeviceClientService {
     const numberValue = Number(value);
     if (!Number.isFinite(numberValue) || numberValue < 0) return null;
     return Math.round(numberValue);
+  }
+
+  private normalizeSegmentIndex(value: unknown) {
+    const numberValue = Number(value);
+    if (!Number.isInteger(numberValue) || numberValue < 0) {
+      throw new BadRequestException('segmentIndex phai la so nguyen khong am.');
+    }
+    return numberValue;
+  }
+
+  private normalizeBoolean(value: unknown) {
+    return value === true || value === 'true' || value === '1' || value === 1;
   }
 
   private ensureMicTestFileAllowed(file: Express.Multer.File) {
@@ -394,6 +453,11 @@ export class DeviceClientService {
     return `${timestamp}-${suffix}${this.getMicTestExtension(file)}`;
   }
 
+  private buildRecordingSegmentFileName(sourceType: string, startedAt: string, segmentIndex: number, file: Express.Multer.File) {
+    const timestamp = startedAt.replace(/[:.]/g, '-');
+    return `${timestamp}-${sourceType.toLowerCase()}-seg-${segmentIndex}${this.getMicTestExtension(file)}`;
+  }
+
   private buildPlaybackRecordingMessage(playStatus: unknown) {
     const status = this.optionalText(playStatus);
     return status ? `Thiet bi upload file ghi am bang chung phat thanh (${status}).` : 'Thiet bi upload file ghi am bang chung phat thanh.';
@@ -414,6 +478,23 @@ export class DeviceClientService {
     if (!text) return null;
     const date = new Date(text);
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  private requiredIsoDate(value: unknown, label: string) {
+    const date = this.optionalIsoDate(value);
+    if (!date) throw new BadRequestException(`${label} phai la ISO datetime hop le.`);
+    return date;
+  }
+
+  private getRecordingProofConfig() {
+    return {
+      enabled: config.recordingProofEnabled,
+      segmentSeconds: config.recordingProofSegmentSeconds,
+      paddingBeforeSeconds: config.recordingProofPaddingBeforeSeconds,
+      paddingAfterSeconds: config.recordingProofPaddingAfterSeconds,
+      retentionDays: config.recordingProofRetentionDays,
+      audioProfile: config.recordingProofAudioProfile,
+    };
   }
 
   private isUuid(value: string) {

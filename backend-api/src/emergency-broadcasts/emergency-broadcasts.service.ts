@@ -90,6 +90,7 @@ export class EmergencyBroadcastsService {
         durationMinutes,
         sourceName: source.name,
         hlsUrl: this.getPublicHlsUrl(stream.version),
+        recordingProof: this.buildRecordingProofPayload(session.sessionId),
       };
       this.gateway.setActiveEmergency(deviceIds, payload);
 
@@ -238,6 +239,7 @@ export class EmergencyBroadcastsService {
         durationMinutes: remainingMinutes,
         sourceName: runtime.sourceName,
         hlsUrl: this.getPublicHlsUrl(stream.version),
+        recordingProof: this.buildRecordingProofPayload(sessionId),
       };
 
       this.gateway.setActiveEmergency(runtime.deviceIds, payload);
@@ -311,6 +313,18 @@ export class EmergencyBroadcastsService {
   private getPublicHlsUrl(streamVersion: number) {
     const baseUrl = config.publicHlsBaseUrl || '/hls';
     return `${baseUrl.replace(/\/+$/, '')}/${config.streamPath}/index.m3u8?v=${encodeURIComponent(streamVersion)}`;
+  }
+
+  private buildRecordingProofPayload(sessionId: string) {
+    return {
+      enabled: config.recordingProofEnabled,
+      sourceType: 'EMERGENCY' as const,
+      sessionId,
+      segmentSeconds: config.recordingProofSegmentSeconds,
+      paddingBeforeSeconds: config.recordingProofPaddingBeforeSeconds,
+      paddingAfterSeconds: config.recordingProofPaddingAfterSeconds,
+      audioProfile: config.recordingProofAudioProfile,
+    };
   }
 
   private redactUrlQuery(value: string) {

@@ -719,6 +719,42 @@ Response:
 
 Allowed `status`: `REQUESTED | RECORDING | STOP_REQUESTED | UPLOADING | COMPLETED | FAILED | EXPIRED`.
 
+### List recording proof segments
+
+Lay danh sach file bang chung phat theo thiet bi va ngay. Cac file nay do thiet bi tu ghi khi phat lich/phat ngay, phat truc tiep, hoac phat khan cap; moi file toi da 15 phut.
+
+```http
+GET /api/devices/:deviceId/recording-segments?date=2026-06-05&sourceType=SCHEDULE
+```
+
+Query:
+
+- `date`: bat buoc theo dang `YYYY-MM-DD` neu muon xem ngay cu the; neu bo trong backend dung ngay hien tai.
+- `sourceType`: optional, `SCHEDULE | LIVE | EMERGENCY`.
+
+Response:
+
+```json
+{
+  "segments": [
+    {
+      "segmentId": "uuid",
+      "deviceId": "uuid",
+      "sourceType": "SCHEDULE",
+      "scheduleId": "uuid",
+      "sessionId": null,
+      "fileName": "2026-06-05T03-00-00-000Z-schedule-seg-0.webm",
+      "startedAt": "2026-06-05T03:00:00.000Z",
+      "endedAt": "2026-06-05T03:15:00.000Z",
+      "durationSeconds": 900,
+      "segmentIndex": 0,
+      "isFinalSegment": false,
+      "audioUrl": "https://signed-url.example.com/recording.webm"
+    }
+  ]
+}
+```
+
 ### Start device recording
 
 Tao phien ghi am va gui lenh `START_RECORDING` cho thiet bi. Thiet bi tu dung sau toi da 60 giay.

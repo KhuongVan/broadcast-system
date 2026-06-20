@@ -2,7 +2,9 @@ import type {
   AudioFile,
   Device,
   DeviceInput,
+  DeviceRecordingSegment,
   DeviceRecordingSession,
+  RecordingProofSourceType,
   EmergencyBroadcastSession,
   EmergencyBroadcastStartInput,
   EmergencySource,
@@ -147,6 +149,11 @@ export const adminApi = {
       json: { volumeLevel },
     }),
   listDeviceRecordings: (deviceId: string) => api<{ recordings: DeviceRecordingSession[] }>(`/api/devices/${deviceId}/recordings`),
+  listDeviceRecordingSegments: (deviceId: string, date: string, sourceType?: RecordingProofSourceType | '') => {
+    const params = new URLSearchParams({ date });
+    if (sourceType) params.set('sourceType', sourceType);
+    return api<{ segments: DeviceRecordingSegment[] }>(`/api/devices/${deviceId}/recording-segments?${params.toString()}`);
+  },
   startDeviceRecording: (deviceId: string) =>
     api<{ recording: DeviceRecordingSession }>(`/api/devices/${deviceId}/recordings/start`, {
       method: 'POST',

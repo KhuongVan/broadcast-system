@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { config } from '../config';
 import { BroadcastScheduleRecord } from '../schedules/schedule.types';
 import { StorageService } from '../storage/storage.service';
 import { DeviceInput } from './device.types';
@@ -6,10 +7,12 @@ import { DeviceInput } from './device.types';
 const RECORDING_MAX_DURATION_SECONDS = 60;
 const DEVICE_OFFLINE_AFTER_MS = 90_000;
 const DEVICE_OFFLINE_SCAN_INTERVAL_MS = 30_000;
+const RECORDING_SEGMENT_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class DevicesService implements OnModuleInit, OnModuleDestroy {
   private offlineScanTimer: ReturnType<typeof setInterval> | null = null;
+  private recordingCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly storage: StorageService) {}
 
@@ -18,10 +21,15 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     this.offlineScanTimer = setInterval(() => {
       this.markStaleDevicesOffline().catch((error) => console.error(`Device offline scan error: ${error.message}`));
     }, DEVICE_OFFLINE_SCAN_INTERVAL_MS);
+    this.cleanupExpiredRecordingSegments().catch((error) => console.error(`Recording cleanup error: ${error.message}`));
+    this.recordingCleanupTimer = setInterval(() => {
+      this.cleanupExpiredRecordingSegments().catch((error) => console.error(`Recording cleanup error: ${error.message}`));
+    }, RECORDING_SEGMENT_CLEANUP_INTERVAL_MS);
   }
 
   onModuleDestroy() {
     if (this.offlineScanTimer) clearInterval(this.offlineScanTimer);
+    if (this.recordingCleanupTimer) clearInterval(this.recordingCleanupTimer);
   }
 
   listDevices() {
@@ -64,6 +72,13 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return this.storage.listDeviceRecordings(deviceId);
   }
 
+  async listRecordingSegments(deviceId: string, query: { date?: string; sourceType?: string }) {
+    await this.getDevice(deviceId);
+    const date = this.normalizeSegmentDate(query.date);
+    const sourceType = this.normalizeSegmentSourceType(query.sourceType);
+    return this.storage.listDeviceRecordingSegments(deviceId, date, sourceType);
+  }
+
   async startRecording(deviceId: string) {
     await this.getDevice(deviceId);
     return this.storage.startDeviceRecording(deviceId, RECORDING_MAX_DURATION_SECONDS);
@@ -89,6 +104,15 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     await this.storage.createDevicePlaybackCommand(device.deviceId, 'PLAY_SCHEDULE', {
       scheduleId: schedule.scheduleId,
       sourceType: schedule.sourceType,
+      recordingProof: {
+        enabled: config.recordingProofEnabled,
+        sourceType: 'SCHEDULE',
+        scheduleId: schedule.scheduleId,
+        segmentSeconds: config.recordingProofSegmentSeconds,
+        paddingBeforeSeconds: config.recordingProofPaddingBeforeSeconds,
+        paddingAfterSeconds: config.recordingProofPaddingAfterSeconds,
+        audioProfile: config.recordingProofAudioProfile,
+      },
     });
 
     return this.storage.updateDevicePlayback(device.deviceId, {
@@ -224,5 +248,30 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   private markStaleDevicesOffline() {
     const staleBeforeIso = new Date(Date.now() - DEVICE_OFFLINE_AFTER_MS).toISOString();
     return this.storage.markStaleDevicesOffline(staleBeforeIso);
+  }
+
+  private cleanupExpiredRecordingSegments() {
+    return this.storage.cleanupExpiredRecordingSegments();
+  }
+
+  private normalizeSegmentDate(value: unknown) {
+    const date = String(value || new Date().toISOString().slice(0, 10)).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException('Ngay ghi am phai co dinh dang YYYY-MM-DD.');
+    }
+
+    const parsed = new Date(`${date}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+      throw new BadRequestException('Ngay ghi am khong hop le.');
+    }
+
+    return date;
+  }
+
+  private normalizeSegmentSourceType(value: unknown) {
+    const sourceType = String(value || '').trim().toUpperCase();
+    if (!sourceType) return null;
+    if (sourceType === 'SCHEDULE' || sourceType === 'LIVE' || sourceType === 'EMERGENCY') return sourceType;
+    throw new BadRequestException('Loai nguon ghi am chi ho tro SCHEDULE, LIVE hoac EMERGENCY.');
   }
 }

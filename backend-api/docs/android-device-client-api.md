@@ -192,7 +192,15 @@ Response example:
   "currentSchedule": null,
   "webviewUrl": "/client",
   "hlsUrl": null,
-  "pollIntervalSeconds": 10
+  "pollIntervalSeconds": 10,
+  "recordingProof": {
+    "enabled": true,
+    "segmentSeconds": 900,
+    "paddingBeforeSeconds": 60,
+    "paddingAfterSeconds": 60,
+    "retentionDays": 90,
+    "audioProfile": "VOICE_STANDARD"
+  }
 }
 ```
 
@@ -200,6 +208,7 @@ Notes:
 
 - `webviewUrl` hien tai la `/client`. Android nen resolve thanh `https://<backend-host>/client`.
 - `hlsUrl` co the la `null` neu backend chua cau hinh `PUBLIC_HLS_BASE_URL`.
+- `recordingProof` cau hinh ghi bang chung phat: ghi toan phien phat, moi file toi da `segmentSeconds`, upload binary multipart, khong dung base64.
 - App nen dung `serverTime` de xu ly lech gio khi so sanh lich.
 
 cURL:
@@ -512,9 +521,41 @@ Loi thuong gap:
 - `400`: Dinh dang file khong duoc ho tro.
 - `401`: Thieu bearer token hoac token khong hop le.
 
-### Upload playback recording
+### Upload recording segment
 
-Upload file ghi am bang chung phat thanh do thiet bi tu ghi khi bat dau phat. Endpoint nay khong can admin bam ghi am.
+Upload tung file ghi am bang chung phat. Thiet bi tu ghi khi phat `SCHEDULE`, `LIVE`, hoac `EMERGENCY`; moi file toi da 15 phut theo `recordingProof.segmentSeconds`. Neu phien phat ngan hon 15 phut thi van upload mot file ngan.
+
+```http
+POST /api/device-client/recording-segment-upload
+Authorization: Bearer <deviceToken>
+Content-Type: multipart/form-data
+```
+
+Form fields:
+
+```yaml
+audio: <binary audio file>       # required
+sourceType: "SCHEDULE"           # SCHEDULE | LIVE | EMERGENCY
+scheduleId: "uuid"               # optional, khi sourceType=SCHEDULE
+sessionId: "uuid"                # optional, khi sourceType=LIVE hoac EMERGENCY
+startedAt: "2026-06-05T03:00:00.000Z"
+endedAt: "2026-06-05T03:15:00.000Z"
+durationSeconds: "900"
+segmentIndex: "0"
+isFinalSegment: "false"
+message: "Playback proof segment"
+```
+
+Notes:
+
+- File duoc luu trong Storage path `recordings/<deviceId>/<yyyy-mm-dd>/<sourceType>/...`.
+- Backend lay `deviceId` tu bearer token, khong tin `deviceId` client gui.
+- Dung binary `multipart/form-data`; khong base64 vi ton bang thong/RAM hon va khong tang bao mat.
+- Backend luu metadata trong `device_recording_segments`; admin tra cuu theo ngay trong tab `Bang chung phat`.
+
+### Upload playback recording legacy
+
+Endpoint cu de tuong thich voi client da cai dat truoc day. Client moi nen dung `recording-segment-upload`.
 
 ```http
 POST /api/device-client/playback-recording-upload
@@ -537,7 +578,7 @@ message: "Playback proof from Android"
 
 Notes:
 
-- Thiet bi nen bat dau recorder cung luc bat dau phat va ghi toi da 60 giay dau.
+- Endpoint legacy nay chi ghi mot file ngan theo client cu; khong con la luong bang chung chinh.
 - File duoc luu trong Storage path `recordings/<deviceId>/<yyyy-mm-dd>/...`.
 - Backend tao ban ghi `device_recording_sessions` voi `recording_source = AUTO_PLAYBACK`; admin xem file trong cot `File ghi am` cua man hinh Van hanh thiet bi.
 

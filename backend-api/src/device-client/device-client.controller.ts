@@ -12,6 +12,7 @@ import {
   DeviceClientPlaybackStateBody,
   DeviceClientPlaybackRecordingUploadBody,
   DeviceClientRecordingStatusBody,
+  DeviceClientRecordingSegmentUploadBody,
   DeviceClientRegisterBody,
   DeviceClientRequest,
   DeviceClientSyncResultBody,
@@ -86,6 +87,22 @@ export class DeviceClientController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.deviceClient.uploadPlaybackRecording(request.deviceClient!, body, file);
+  }
+
+  @Post('/recording-segment-upload')
+  @UseGuards(DeviceClientAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: memoryStorage(),
+      limits: { fileSize: config.maxUploadSize },
+    }),
+  )
+  uploadRecordingSegment(
+    @Req() request: DeviceClientRequest,
+    @Body() body: DeviceClientRecordingSegmentUploadBody,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.deviceClient.uploadRecordingSegment(request.deviceClient!, body, file);
   }
 
   @Get('/commands')

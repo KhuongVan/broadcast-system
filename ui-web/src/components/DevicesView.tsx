@@ -2,7 +2,16 @@ import { ChangeEvent, FormEvent, useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { adminApi } from '../lib/api';
 import { formatDateTime, formatStatus } from '../lib/format';
-import type { Device, DeviceInput, DeviceRecordingSession, DeviceScheduleAssignment, Schedule } from '../lib/types';
+import type {
+  Device,
+  DeviceInput,
+  DeviceRecordingSegment,
+  DeviceRecordingSession,
+  DeviceRecordingStatus,
+  DeviceScheduleAssignment,
+  RecordingProofSourceType,
+  Schedule,
+} from '../lib/types';
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
@@ -48,11 +57,16 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [recordingDevice, setRecordingDevice] = useState<Device | null>(null);
+  const [recordingTab, setRecordingTab] = useState<'proof' | 'test'>('proof');
+  const [recordingDate, setRecordingDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [recordingSourceType, setRecordingSourceType] = useState<RecordingProofSourceType | ''>('');
+  const [recordingSegments, setRecordingSegments] = useState<DeviceRecordingSegment[]>([]);
   const [assignedScheduleDevice, setAssignedScheduleDevice] = useState<Device | null>(null);
   const [detailDevice, setDetailDevice] = useState<Device | null>(null);
   const [recordings, setRecordings] = useState<DeviceRecordingSession[]>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [recordingsError, setRecordingsError] = useState('');
+  const [manualRecording, setManualRecording] = useState<DeviceRecordingSession | null>(null);
 
   const operationSchedules = useMemo(() => schedules, [schedules]);
 
@@ -258,14 +272,93 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
 
   async function openRecordingModal(device: Device) {
     setRecordingDevice(device);
+    setRecordingTab('proof');
+    setRecordingDate(new Date().toISOString().slice(0, 10));
+    setRecordingSourceType('');
+    setRecordingSegments([]);
     setRecordings([]);
     setRecordingsError('');
+    setManualRecording(null);
     setRecordingsLoading(true);
     try {
-      const data = await adminApi.listDeviceRecordings(device.deviceId);
-      setRecordings(data.recordings.filter((recording) => recording.audioUrl));
+      const [segmentsData, recordingsData] = await Promise.all([
+        adminApi.listDeviceRecordingSegments(device.deviceId, new Date().toISOString().slice(0, 10)),
+        adminApi.listDeviceRecordings(device.deviceId),
+      ]);
+      setRecordingSegments(segmentsData.segments);
+      setRecordings(recordingsData.recordings.filter((recording) => recording.audioUrl || recording.status !== 'COMPLETED').slice(0, 20));
+      setManualRecording(recordingsData.recordings.find((recording) => ['REQUESTED', 'RECORDING', 'STOP_REQUESTED', 'UPLOADING'].includes(recording.status)) || null);
     } catch (err) {
       const message = getErrorMessage(err, 'Không tải được file ghi âm.');
+      setRecordingsError(message);
+      showToast({ type: 'error', message });
+    } finally {
+      setRecordingsLoading(false);
+    }
+  }
+
+  async function reloadRecordingProof(device = recordingDevice, date = recordingDate, sourceType = recordingSourceType) {
+    if (!device) return;
+    setRecordingsLoading(true);
+    setRecordingsError('');
+    try {
+      const data = await adminApi.listDeviceRecordingSegments(device.deviceId, date, sourceType);
+      setRecordingSegments(data.segments);
+    } catch (err) {
+      const message = getErrorMessage(err, 'Không tải được bằng chứng phát.');
+      setRecordingsError(message);
+      showToast({ type: 'error', message });
+    } finally {
+      setRecordingsLoading(false);
+    }
+  }
+
+  async function reloadManualRecordings(device = recordingDevice) {
+    if (!device) return;
+    setRecordingsLoading(true);
+    setRecordingsError('');
+    try {
+      const data = await adminApi.listDeviceRecordings(device.deviceId);
+      setRecordings(data.recordings.filter((recording) => recording.audioUrl || recording.status !== 'COMPLETED').slice(0, 20));
+      setManualRecording(data.recordings.find((recording) => ['REQUESTED', 'RECORDING', 'STOP_REQUESTED', 'UPLOADING'].includes(recording.status)) || null);
+    } catch (err) {
+      const message = getErrorMessage(err, 'Không tải được ghi thử mic.');
+      setRecordingsError(message);
+      showToast({ type: 'error', message });
+    } finally {
+      setRecordingsLoading(false);
+    }
+  }
+
+  async function startManualRecording() {
+    if (!recordingDevice) return;
+    setRecordingsLoading(true);
+    setRecordingsError('');
+    try {
+      const data = await adminApi.startDeviceRecording(recordingDevice.deviceId);
+      setManualRecording(data.recording);
+      await reloadManualRecordings(recordingDevice);
+      showToast({ type: 'success', message: 'Đã gửi lệnh ghi thử mic 60 giây.' });
+    } catch (err) {
+      const message = getErrorMessage(err, 'Không bắt đầu ghi thử mic.');
+      setRecordingsError(message);
+      showToast({ type: 'error', message });
+    } finally {
+      setRecordingsLoading(false);
+    }
+  }
+
+  async function stopManualRecording() {
+    if (!recordingDevice || !manualRecording) return;
+    setRecordingsLoading(true);
+    setRecordingsError('');
+    try {
+      const data = await adminApi.stopDeviceRecording(recordingDevice.deviceId, manualRecording.recordingId);
+      setManualRecording(data.recording);
+      await reloadManualRecordings(recordingDevice);
+      showToast({ type: 'success', message: 'Đã gửi lệnh dừng ghi thử mic.' });
+    } catch (err) {
+      const message = getErrorMessage(err, 'Không dừng ghi thử mic.');
       setRecordingsError(message);
       showToast({ type: 'error', message });
     } finally {
@@ -299,9 +392,11 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
 
   function closeRecordingModal() {
     setRecordingDevice(null);
+    setRecordingSegments([]);
     setRecordings([]);
     setRecordingsError('');
     setRecordingsLoading(false);
+    setManualRecording(null);
   }
 
   function exportDevicesCsv() {
@@ -510,7 +605,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                             </td>
                             <td>
                               <button className="ghost compact" onClick={() => void openRecordingModal(device)} type="button">
-                                Danh sách
+                                Kho ghi âm
                               </button>
                             </td>
                             <td>
@@ -696,8 +791,30 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
         </div>
       ) : null}
       {recordingDevice ? (
-        <Modal title={`Danh sách file ghi âm trên thiết bị: ${recordingDevice.name}`} onClose={closeRecordingModal}>
-          <RecordingFilesTable recordings={recordings} loading={recordingsLoading} error={recordingsError} />
+        <Modal title={`Kho ghi âm: ${recordingDevice.name}`} onClose={closeRecordingModal}>
+          <RecordingArchive
+            activeTab={recordingTab}
+            date={recordingDate}
+            error={recordingsError}
+            loading={recordingsLoading}
+            manualRecording={manualRecording}
+            recordings={recordings}
+            segments={recordingSegments}
+            sourceType={recordingSourceType}
+            onDateChange={(date) => {
+              setRecordingDate(date);
+              void reloadRecordingProof(recordingDevice, date, recordingSourceType);
+            }}
+            onRefreshManual={() => void reloadManualRecordings(recordingDevice)}
+            onRefreshProof={() => void reloadRecordingProof(recordingDevice, recordingDate, recordingSourceType)}
+            onSourceTypeChange={(sourceType) => {
+              setRecordingSourceType(sourceType);
+              void reloadRecordingProof(recordingDevice, recordingDate, sourceType);
+            }}
+            onStartManual={() => void startManualRecording()}
+            onStopManual={() => void stopManualRecording()}
+            onTabChange={setRecordingTab}
+          />
         </Modal>
       ) : null}
       {assignedScheduleDevice ? (
@@ -722,6 +839,155 @@ function DeviceSearch({ value, onChange }: { value: string; onChange: (value: st
   return (
     <div className="toolbar-row">
       <input placeholder="Tìm theo tên, MAC, khu vực, kết nối..." value={value} onChange={(event) => onChange(event.target.value)} />
+    </div>
+  );
+}
+
+function RecordingArchive({
+  activeTab,
+  date,
+  error,
+  loading,
+  manualRecording,
+  recordings,
+  segments,
+  sourceType,
+  onDateChange,
+  onRefreshManual,
+  onRefreshProof,
+  onSourceTypeChange,
+  onStartManual,
+  onStopManual,
+  onTabChange,
+}: {
+  activeTab: 'proof' | 'test';
+  date: string;
+  error: string;
+  loading: boolean;
+  manualRecording: DeviceRecordingSession | null;
+  recordings: DeviceRecordingSession[];
+  segments: DeviceRecordingSegment[];
+  sourceType: RecordingProofSourceType | '';
+  onDateChange: (date: string) => void;
+  onRefreshManual: () => void;
+  onRefreshProof: () => void;
+  onSourceTypeChange: (sourceType: RecordingProofSourceType | '') => void;
+  onStartManual: () => void;
+  onStopManual: () => void;
+  onTabChange: (tab: 'proof' | 'test') => void;
+}) {
+  return (
+    <div className="recording-archive">
+      <div className="tabs compact-tabs">
+        <button className={activeTab === 'proof' ? 'active' : ''} onClick={() => onTabChange('proof')} type="button">
+          Bằng chứng phát
+        </button>
+        <button className={activeTab === 'test' ? 'active' : ''} onClick={() => onTabChange('test')} type="button">
+          Ghi thử mic
+        </button>
+      </div>
+
+      {activeTab === 'proof' ? (
+        <>
+          <div className="recording-toolbar">
+            <label>
+              Ngày
+              <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} />
+            </label>
+            <label>
+              Nguồn phát
+              <select value={sourceType} onChange={(event) => onSourceTypeChange(event.target.value as RecordingProofSourceType | '')}>
+                <option value="">Tất cả</option>
+                <option value="SCHEDULE">Lịch/phát ngay</option>
+                <option value="LIVE">Phát trực tiếp</option>
+                <option value="EMERGENCY">Khẩn cấp</option>
+              </select>
+            </label>
+            <button className="ghost compact" disabled={loading} onClick={onRefreshProof} type="button">
+              Tải lại
+            </button>
+          </div>
+          <RecordingSegmentsTable segments={segments} loading={loading} error={error} />
+        </>
+      ) : (
+        <>
+          <div className="recording-toolbar">
+            <button className="primary compact" disabled={loading || Boolean(manualRecording)} onClick={onStartManual} type="button">
+              Bắt đầu ghi thử 60s
+            </button>
+            <button className="danger compact" disabled={loading || !manualRecording} onClick={onStopManual} type="button">
+              Dừng ghi
+            </button>
+            <button className="ghost compact" disabled={loading} onClick={onRefreshManual} type="button">
+              Tải lại
+            </button>
+            {manualRecording ? <span className="subtext">Trạng thái: {formatManualRecordingStatus(manualRecording.status)}</span> : null}
+          </div>
+          <RecordingFilesTable recordings={recordings} loading={loading} error={error} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function RecordingSegmentsTable({ segments, loading, error }: { segments: DeviceRecordingSegment[]; loading: boolean; error: string }) {
+  const [playingId, setPlayingId] = useState('');
+
+  if (loading) return <div className="state compact">Đang tải bằng chứng phát...</div>;
+  if (error) return <div className="state error compact">{error}</div>;
+  if (!segments.length) return <div className="state compact">Chưa có bằng chứng phát trong ngày này.</div>;
+
+  return (
+    <div className="table-wrap recording-files-table">
+      <table>
+        <thead>
+          <tr>
+            <th>STT</th>
+            <th>Thời gian</th>
+            <th>Nguồn</th>
+            <th>File</th>
+            <th>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody>
+          {segments.map((segment, index) => {
+            const audioUrl = segment.audioUrl || '';
+            return (
+              <tr key={segment.segmentId}>
+                <td>{index + 1}</td>
+                <td>
+                  <strong>{formatRecordingTimeRange(segment.startedAt, segment.endedAt)}</strong>
+                  <div className="subtext">{formatDuration(segment.durationSeconds)}</div>
+                </td>
+                <td>
+                  <StatusBadge tone={segment.sourceType === 'EMERGENCY' ? 'danger' : segment.sourceType === 'LIVE' ? 'warn' : 'ok'}>
+                    {getRecordingSourceLabel(segment.sourceType)}
+                  </StatusBadge>
+                </td>
+                <td>
+                  <strong>{segment.fileName}</strong>
+                  {segment.isFinalSegment ? <div className="subtext">Đoạn cuối</div> : null}
+                </td>
+                <td>
+                  <div className="recording-file-actions">
+                    <button className="ghost icon-btn" disabled={!audioUrl} onClick={() => setPlayingId((current) => (current === segment.segmentId ? '' : segment.segmentId))} title="Nghe file" type="button">
+                      ▶
+                    </button>
+                    <a className="ghost icon-btn download-link" download={segment.fileName} href={audioUrl} title="Tải file">
+                      ⇩
+                    </a>
+                  </div>
+                  {playingId === segment.segmentId && audioUrl ? (
+                    <audio className="recording-audio" controls autoPlay src={audioUrl}>
+                      Trình duyệt không hỗ trợ nghe file ghi âm.
+                    </audio>
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -866,6 +1132,42 @@ function getRecordingFileName(recording: DeviceRecordingSession) {
   const value = recording.uploadedAt || recording.createdAt;
   if (!value) return `${recording.recordingId}.webm`;
   return `${formatLastSeenTime(value).replace(/\//g, '-').replace(' ', '-')}-${recording.recordingId.slice(0, 8)}.webm`;
+}
+
+function getRecordingSourceLabel(sourceType: RecordingProofSourceType) {
+  if (sourceType === 'LIVE') return 'Trực tiếp';
+  if (sourceType === 'EMERGENCY') return 'Khẩn cấp';
+  return 'Lịch phát';
+}
+
+function formatRecordingTimeRange(startedAt: string, endedAt: string) {
+  return `${formatTimeOnly(startedAt)} - ${formatTimeOnly(endedAt)}`;
+}
+
+function formatTimeOnly(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--:--';
+  return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function formatDuration(seconds: number | null) {
+  if (!seconds || seconds < 1) return 'Không rõ thời lượng';
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes ? `${minutes} phút ${rest ? `${rest} giây` : ''}`.trim() : `${rest} giây`;
+}
+
+function formatManualRecordingStatus(status: DeviceRecordingStatus) {
+  const labels: Record<DeviceRecordingStatus, string> = {
+    REQUESTED: 'Đang chờ thiết bị',
+    RECORDING: 'Đang ghi',
+    STOP_REQUESTED: 'Đang yêu cầu dừng',
+    UPLOADING: 'Đang upload',
+    COMPLETED: 'Hoàn tất',
+    FAILED: 'Lỗi',
+    EXPIRED: 'Hết hạn',
+  };
+  return labels[status] || status;
 }
 
 function normalizeSearchText(value: unknown) {

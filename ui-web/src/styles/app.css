@@ -1154,6 +1154,59 @@ audio {
   padding: 6px 10px;
 }
 
+.recording-archive {
+  display: grid;
+  gap: 14px;
+}
+
+.compact-tabs {
+  align-items: center;
+  border-bottom: 1px solid #d8e1ee;
+  display: flex;
+  gap: 8px;
+}
+
+.compact-tabs button {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: #526071;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 10px 4px;
+}
+
+.compact-tabs button.active {
+  border-bottom-color: #1359ff;
+  color: #172033;
+}
+
+.recording-toolbar {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recording-toolbar label {
+  display: grid;
+  gap: 5px;
+  min-width: 160px;
+}
+
+.recording-toolbar input,
+.recording-toolbar select {
+  background: #fff;
+  border: 1px solid #d8e1ee;
+  border-radius: 8px;
+  color: #172033;
+  font: inherit;
+  min-height: 36px;
+  padding: 0 10px;
+}
+
 .recording-audio {
   display: block;
   height: 32px;

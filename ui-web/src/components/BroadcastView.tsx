@@ -207,6 +207,7 @@ export function BroadcastView({ prefillDeviceId, openCreateOnPrefill = false, on
         targetType,
         targetArea: targetType === 'AREA' ? target.id : null,
         targetDeviceIds: targetType === 'DEVICE' ? [target.id] : [],
+        sessionId: data.session.sessionId,
       })) {
         stopTracks();
         await failActiveSession('Socket chưa kết nối.');
