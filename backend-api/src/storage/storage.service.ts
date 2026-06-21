@@ -20,12 +20,57 @@ import { LiveBroadcastCreateInput, LiveBroadcastRecord, LiveBroadcastStatus } fr
 import { PlaylistItemRecord, PlaylistRecord } from '../playlists/playlist.types';
 import { BroadcastScheduleRecord, ScheduleInput, ScheduleRunLogRecord } from '../schedules/schedule.types';
 
+export type CommuneRecord = {
+  communeId: string;
+  name: string;
+  code: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AuthUserRecord = {
+  userId: string;
+  username: string;
+  passwordHash: string;
+  displayName: string | null;
+  role: string;
+  communeId: string | null;
+  communeName: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CommuneRow = {
+  commune_id: string;
+  name: string;
+  code: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  created_at: string;
+  updated_at: string;
+};
+
+type AppUserRow = {
+  user_id: string;
+  username: string;
+  password_hash: string;
+  display_name: string | null;
+  role: string;
+  commune_id: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  communes?: CommuneRow | CommuneRow[] | null;
+};
+
 type AudioFileRow = {
   file_id: string;
   original_name: string;
   storage_path: string;
   size: number;
   mimetype: string;
+  commune_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -33,6 +78,7 @@ type AudioFileRow = {
 type PlaylistRow = {
   playlist_id: string;
   name: string;
+  commune_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -61,6 +107,7 @@ type BroadcastScheduleRow = {
   repeat_type: 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
   repeat_count: number | null;
   enabled: boolean;
+  commune_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -83,6 +130,10 @@ type DeviceRow = {
   sim_registered_date: string | null;
   android_id: string | null;
   device_token_hash: string | null;
+  commune_id: string | null;
+  provisioning_token_hash: string | null;
+  provisioning_expires_at: string | null;
+  provisioned_at: string | null;
   area: string;
   connection_type: DeviceConnectionType;
   online: boolean;
@@ -224,6 +275,7 @@ type LiveBroadcastSessionRow = {
   status: LiveBroadcastStatus;
   started_by: string | null;
   message: string | null;
+  commune_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -250,6 +302,7 @@ type EmergencyBroadcastSessionRow = {
   scheduled_end_at: string;
   ended_at: string | null;
   status: EmergencyBroadcastStatus;
+  commune_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -347,11 +400,140 @@ export class StorageService {
     });
   }
 
-  async listFiles() {
+  async listCommunes(): Promise<CommuneRecord[]> {
     const { data, error } = await this.supabase
+      .from('communes')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(`Khong doc duoc communes: ${error.message}`);
+    return ((data || []) as CommuneRow[]).map((row) => this.toCommuneRecord(row));
+  }
+
+  async getCommune(communeId: string): Promise<CommuneRecord | null> {
+    const { data, error } = await this.supabase
+      .from('communes')
+      .select('*')
+      .eq('commune_id', communeId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong doc duoc commune: ${error.message}`);
+    return data ? this.toCommuneRecord(data as CommuneRow) : null;
+  }
+
+  async createCommune(input: { name: string; code: string; status?: 'ACTIVE' | 'INACTIVE' }): Promise<CommuneRecord> {
+    const { data, error } = await this.supabase
+      .from('communes')
+      .insert({ name: input.name, code: input.code, status: input.status || 'ACTIVE' })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(`Khong tao duoc commune: ${error.message}`);
+    return this.toCommuneRecord(data as CommuneRow);
+  }
+
+  async updateCommune(communeId: string, input: { name: string; code: string; status: 'ACTIVE' | 'INACTIVE' }): Promise<CommuneRecord | null> {
+    const { data, error } = await this.supabase
+      .from('communes')
+      .update({ name: input.name, code: input.code, status: input.status, updated_at: new Date().toISOString() })
+      .eq('commune_id', communeId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong cap nhat duoc commune: ${error.message}`);
+    return data ? this.toCommuneRecord(data as CommuneRow) : null;
+  }
+
+  async listUsers(): Promise<AuthUserRecord[]> {
+    const { data, error } = await this.supabase
+      .from('app_users')
+      .select('*, communes(*)')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Khong doc duoc app_users: ${error.message}`);
+    return ((data || []) as AppUserRow[]).map((row) => this.toAuthUserRecord(row));
+  }
+
+  async getAuthUserByUsername(username: string): Promise<AuthUserRecord | null> {
+    const { data, error } = await this.supabase
+      .from('app_users')
+      .select('*, communes(*)')
+      .eq('username', username.trim())
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong doc duoc user: ${error.message}`);
+    return data ? this.toAuthUserRecord(data as AppUserRow) : null;
+  }
+
+  async createUser(input: {
+    username: string;
+    passwordHash: string;
+    displayName: string | null;
+    role: string;
+    communeId: string | null;
+    active: boolean;
+  }): Promise<AuthUserRecord> {
+    const { data, error } = await this.supabase
+      .from('app_users')
+      .insert({
+        username: input.username,
+        password_hash: input.passwordHash,
+        display_name: input.displayName,
+        role: input.role,
+        commune_id: input.communeId,
+        active: input.active,
+      })
+      .select('*, communes(*)')
+      .single();
+
+    if (error) throw new Error(`Khong tao duoc user: ${error.message}`);
+    return this.toAuthUserRecord(data as AppUserRow);
+  }
+
+  async updateUser(input: {
+    userId: string;
+    displayName: string | null;
+    role: string;
+    communeId: string | null;
+    active: boolean;
+  }): Promise<AuthUserRecord | null> {
+    const { data, error } = await this.supabase
+      .from('app_users')
+      .update({
+        display_name: input.displayName,
+        role: input.role,
+        commune_id: input.communeId,
+        active: input.active,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', input.userId)
+      .select('*, communes(*)')
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong cap nhat duoc user: ${error.message}`);
+    return data ? this.toAuthUserRecord(data as AppUserRow) : null;
+  }
+
+  async resetUserPassword(userId: string, passwordHash: string): Promise<AuthUserRecord | null> {
+    const { data, error } = await this.supabase
+      .from('app_users')
+      .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .select('*, communes(*)')
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong dat lai mat khau user: ${error.message}`);
+    return data ? this.toAuthUserRecord(data as AppUserRow) : null;
+  }
+
+  async listFiles(communeId?: string | null) {
+    let query = this.supabase
       .from('audio_files')
       .select('*')
       .order('created_at', { ascending: false });
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Khong doc duoc audio_files: ${error.message}`);
@@ -360,12 +542,14 @@ export class StorageService {
     return Promise.all(((data || []) as AudioFileRow[]).map((row) => this.toRecordWithSignedUrl(row)));
   }
 
-  async getFile(fileId: string) {
-    const { data, error } = await this.supabase
+  async getFile(fileId: string, communeId?: string | null) {
+    let query = this.supabase
       .from('audio_files')
       .select('*')
-      .eq('file_id', fileId)
-      .maybeSingle();
+      .eq('file_id', fileId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       throw new Error(`Khong doc duoc audio file: ${error.message}`);
@@ -374,7 +558,7 @@ export class StorageService {
     return data ? this.toRecordWithSignedUrl(data as AudioFileRow) : null;
   }
 
-  async uploadAudioFile(file: Express.Multer.File) {
+  async uploadAudioFile(file: Express.Multer.File, communeId?: string | null) {
     if (!file.buffer) {
       throw new Error('Upload phai dung memory storage de gui len Supabase.');
     }
@@ -402,6 +586,7 @@ export class StorageService {
       storage_path: storagePath,
       size: file.size,
       mimetype: file.mimetype || 'audio/mpeg',
+      commune_id: communeId || null,
       created_at: now,
       updated_at: now,
     };
@@ -1076,11 +1261,14 @@ export class StorageService {
     }
   }
 
-  async listPlaylists() {
-    const { data, error } = await this.supabase
+  async listPlaylists(communeId?: string | null) {
+    let query = this.supabase
       .from('playlists')
       .select('*')
       .order('created_at', { ascending: false });
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Khong doc duoc playlists: ${error.message}`);
@@ -1089,12 +1277,14 @@ export class StorageService {
     return Promise.all(((data || []) as PlaylistRow[]).map((row) => this.toPlaylistRecord(row)));
   }
 
-  async getPlaylist(playlistId: string) {
-    const { data, error } = await this.supabase
+  async getPlaylist(playlistId: string, communeId?: string | null) {
+    let query = this.supabase
       .from('playlists')
       .select('*')
-      .eq('playlist_id', playlistId)
-      .maybeSingle();
+      .eq('playlist_id', playlistId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       throw new Error(`Khong doc duoc playlist: ${error.message}`);
@@ -1103,10 +1293,10 @@ export class StorageService {
     return data ? this.toPlaylistRecord(data as PlaylistRow) : null;
   }
 
-  async createPlaylist(name: string) {
+  async createPlaylist(name: string, communeId?: string | null) {
     const { data, error } = await this.supabase
       .from('playlists')
-      .insert({ name })
+      .insert({ name, commune_id: communeId || null })
       .select('*')
       .single();
 
@@ -1117,13 +1307,13 @@ export class StorageService {
     return this.toPlaylistRecord(data as PlaylistRow);
   }
 
-  async updatePlaylist(playlistId: string, name: string) {
-    const { data, error } = await this.supabase
+  async updatePlaylist(playlistId: string, name: string, communeId?: string | null) {
+    let query = this.supabase
       .from('playlists')
       .update({ name, updated_at: new Date().toISOString() })
-      .eq('playlist_id', playlistId)
-      .select('*')
-      .maybeSingle();
+      .eq('playlist_id', playlistId);
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.select('*').maybeSingle();
 
     if (error) {
       throw new Error(`Khong cap nhat duoc playlist: ${error.message}`);
@@ -1132,8 +1322,10 @@ export class StorageService {
     return data ? this.toPlaylistRecord(data as PlaylistRow) : null;
   }
 
-  async deletePlaylist(playlistId: string) {
-    const { error } = await this.supabase.from('playlists').delete().eq('playlist_id', playlistId);
+  async deletePlaylist(playlistId: string, communeId?: string | null) {
+    let query = this.supabase.from('playlists').delete().eq('playlist_id', playlistId);
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { error } = await query;
     if (error) {
       throw new Error(`Khong xoa duoc playlist: ${error.message}`);
     }
@@ -1180,12 +1372,15 @@ export class StorageService {
     }
   }
 
-  async listSchedules() {
-    const { data, error } = await this.supabase
+  async listSchedules(communeId?: string | null) {
+    let query = this.supabase
       .from('broadcast_schedules')
       .select('*')
       .order('start_date', { ascending: true })
       .order('start_time', { ascending: true });
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Khong doc duoc broadcast_schedules: ${error.message}`);
@@ -1194,12 +1389,14 @@ export class StorageService {
     return ((data || []) as BroadcastScheduleRow[]).map((row) => this.toScheduleRecord(row));
   }
 
-  async getSchedule(scheduleId: string) {
-    const { data, error } = await this.supabase
+  async getSchedule(scheduleId: string, communeId?: string | null) {
+    let query = this.supabase
       .from('broadcast_schedules')
       .select('*')
-      .eq('schedule_id', scheduleId)
-      .maybeSingle();
+      .eq('schedule_id', scheduleId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       throw new Error(`Khong doc duoc lich phat: ${error.message}`);
@@ -1237,10 +1434,10 @@ export class StorageService {
     return ((devices || []) as Pick<DeviceRow, 'device_id'>[]).map((device) => device.device_id);
   }
 
-  async createSchedule(input: Required<ScheduleInput>) {
+  async createSchedule(input: Required<ScheduleInput>, communeId?: string | null) {
     const { data, error } = await this.supabase
       .from('broadcast_schedules')
-      .insert(this.toScheduleRowInput(input))
+      .insert({ ...this.toScheduleRowInput(input), commune_id: communeId || null })
       .select('*')
       .single();
 
@@ -1251,13 +1448,14 @@ export class StorageService {
     return this.toScheduleRecord(data as BroadcastScheduleRow);
   }
 
-  async updateSchedule(scheduleId: string, input: Required<ScheduleInput>) {
-    const { data, error } = await this.supabase
+  async updateSchedule(scheduleId: string, input: Required<ScheduleInput>, communeId?: string | null) {
+    let query = this.supabase
       .from('broadcast_schedules')
       .update({ ...this.toScheduleRowInput(input), updated_at: new Date().toISOString() })
-      .eq('schedule_id', scheduleId)
-      .select('*')
-      .maybeSingle();
+      .eq('schedule_id', scheduleId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.select('*').maybeSingle();
 
     if (error) {
       throw new Error(`Khong cap nhat duoc lich phat: ${error.message}`);
@@ -1266,8 +1464,10 @@ export class StorageService {
     return data ? this.toScheduleRecord(data as BroadcastScheduleRow) : null;
   }
 
-  async deleteSchedule(scheduleId: string) {
-    const { error } = await this.supabase.from('broadcast_schedules').delete().eq('schedule_id', scheduleId);
+  async deleteSchedule(scheduleId: string, communeId?: string | null) {
+    let query = this.supabase.from('broadcast_schedules').delete().eq('schedule_id', scheduleId);
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { error } = await query;
     if (error) {
       throw new Error(`Khong xoa duoc lich phat: ${error.message}`);
     }
@@ -1298,11 +1498,14 @@ export class StorageService {
     return this.toScheduleRunLogRecord(data as ScheduleRunLogRow);
   }
 
-  async listLiveBroadcastSessions() {
-    const { data, error } = await this.supabase
+  async listLiveBroadcastSessions(communeId?: string | null) {
+    let query = this.supabase
       .from('live_broadcast_sessions')
       .select('*')
       .order('started_at', { ascending: false });
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Khong doc duoc live_broadcast_sessions: ${error.message}`);
@@ -1311,7 +1514,7 @@ export class StorageService {
     return ((data || []) as LiveBroadcastSessionRow[]).map((row) => this.toLiveBroadcastRecord(row));
   }
 
-  async createLiveBroadcastSession(input: LiveBroadcastCreateInput) {
+  async createLiveBroadcastSession(input: LiveBroadcastCreateInput, communeId?: string | null) {
     const now = new Date().toISOString();
     const { data, error } = await this.supabase
       .from('live_broadcast_sessions')
@@ -1327,6 +1530,7 @@ export class StorageService {
         status: 'STARTED',
         started_by: input.startedBy || null,
         message: null,
+        commune_id: communeId || null,
         created_at: now,
         updated_at: now,
       })
@@ -1340,9 +1544,14 @@ export class StorageService {
     return this.toLiveBroadcastRecord(data as LiveBroadcastSessionRow);
   }
 
-  async finishLiveBroadcastSession(sessionId: string, status: Exclude<LiveBroadcastStatus, 'STARTED'>, message?: string | null) {
+  async finishLiveBroadcastSession(
+    sessionId: string,
+    status: Exclude<LiveBroadcastStatus, 'STARTED'>,
+    message?: string | null,
+    communeId?: string | null,
+  ) {
     const now = new Date().toISOString();
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('live_broadcast_sessions')
       .update({
         ended_at: now,
@@ -1350,9 +1559,10 @@ export class StorageService {
         message: message || null,
         updated_at: now,
       })
-      .eq('session_id', sessionId)
-      .select('*')
-      .maybeSingle();
+      .eq('session_id', sessionId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.select('*').maybeSingle();
 
     if (error) {
       throw new Error(`Khong cap nhat duoc live_broadcast_sessions: ${error.message}`);
@@ -1361,13 +1571,16 @@ export class StorageService {
     return data ? this.toLiveBroadcastRecord(data as LiveBroadcastSessionRow) : null;
   }
 
-  async listDevices() {
-    const { data, error } = await this.supabase
+  async listDevices(communeId?: string | null) {
+    let query = this.supabase
       .from('devices')
       .select('*')
       .is('deleted_at', null)
       .order('area', { ascending: true })
       .order('name', { ascending: true });
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Khong doc duoc devices: ${error.message}`);
@@ -1376,13 +1589,15 @@ export class StorageService {
     return Promise.all(((data || []) as DeviceRow[]).map((row) => this.toDeviceRecord(row)));
   }
 
-  async getDevice(deviceId: string) {
-    const { data, error } = await this.supabase
+  async getDevice(deviceId: string, communeId?: string | null) {
+    let query = this.supabase
       .from('devices')
       .select('*')
       .eq('device_id', deviceId)
-      .is('deleted_at', null)
-      .maybeSingle();
+      .is('deleted_at', null);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       throw new Error(`Khong doc duoc thiet bi: ${error.message}`);
@@ -1432,6 +1647,7 @@ export class StorageService {
         sim_number: input.simNumber,
         receiver_installed_date: input.receiverInstalledDate,
         sim_registered_date: input.simRegisteredDate,
+        commune_id: input.communeId || null,
         area: input.area,
         connection_type: input.connectionType || 'UNKNOWN',
         latitude: input.latitude,
@@ -1464,6 +1680,7 @@ export class StorageService {
     name: string;
     connectionType: DeviceConnectionType;
     appVersion: string | null;
+    communeId?: string | null;
   }) {
     const now = new Date().toISOString();
     const { data, error } = await this.supabase
@@ -1472,6 +1689,7 @@ export class StorageService {
         name: input.name,
         mac_address: input.macAddress,
         android_id: input.androidId,
+        commune_id: input.communeId || null,
         area: 'Chưa phân khu',
         connection_type: input.connectionType,
         online: true,
@@ -1508,6 +1726,71 @@ export class StorageService {
 
     if (error) throw new Error(`Khong luu duoc token thiet bi: ${error.message}`);
     if (!data) throw new Error('Khong tim thay thiet bi de luu token.');
+    return this.toDeviceRecord(data as DeviceRow);
+  }
+
+  async saveDeviceProvisioningToken(deviceId: string, tokenHash: string, expiresAt: string) {
+    const { data, error } = await this.supabase
+      .from('devices')
+      .update({
+        provisioning_token_hash: tokenHash,
+        provisioning_expires_at: expiresAt,
+        provisioned_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('device_id', deviceId)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong luu duoc provisioning token: ${error.message}`);
+    if (!data) throw new Error('Khong tim thay thiet bi de luu provisioning token.');
+    return this.toDeviceRecord(data as DeviceRow);
+  }
+
+  async getDeviceByProvisioningTokenHash(tokenHash: string) {
+    const { data, error } = await this.supabase
+      .from('devices')
+      .select('*')
+      .eq('provisioning_token_hash', tokenHash)
+      .is('provisioned_at', null)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong xac thuc duoc provisioning token: ${error.message}`);
+    return data ? this.toDeviceRecord(data as DeviceRow) : null;
+  }
+
+  async markDeviceProvisioned(deviceId: string, tokenHash: string, deviceTokenHash: string, input: {
+    androidId?: string | null;
+    appVersion?: string | null;
+    connectionType?: DeviceConnectionType;
+  }) {
+    const now = new Date().toISOString();
+    const update: Record<string, unknown> = {
+      device_token_hash: deviceTokenHash,
+      provisioning_token_hash: null,
+      provisioning_expires_at: null,
+      provisioned_at: now,
+      online: true,
+      last_seen_at: now,
+      updated_at: now,
+    };
+    if (input.androidId) update.android_id = input.androidId;
+    if (input.appVersion !== undefined) update.app_version = input.appVersion;
+    if (input.connectionType !== undefined) update.connection_type = input.connectionType;
+
+    const { data, error } = await this.supabase
+      .from('devices')
+      .update(update)
+      .eq('device_id', deviceId)
+      .eq('provisioning_token_hash', tokenHash)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new Error(`Khong cap nhat duoc provisioning thiet bi: ${error.message}`);
+    if (!data) throw new Error('Khong tim thay thiet bi de provisioning.');
     return this.toDeviceRecord(data as DeviceRow);
   }
 
@@ -1560,6 +1843,7 @@ export class StorageService {
         sim_number: input.simNumber,
         receiver_installed_date: input.receiverInstalledDate,
         sim_registered_date: input.simRegisteredDate,
+        commune_id: input.communeId || null,
         area: input.area,
         latitude: input.latitude,
         longitude: input.longitude,
@@ -2038,6 +2322,7 @@ export class StorageService {
       storagePath: row.storage_path,
       size: Number(row.size),
       mimetype: row.mimetype,
+      communeId: row.commune_id || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       url: await this.createSignedUrl(row.storage_path),
@@ -2049,6 +2334,7 @@ export class StorageService {
     return {
       playlistId: row.playlist_id,
       name: row.name,
+      communeId: row.commune_id || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       totalFiles: items.length,
@@ -2117,6 +2403,7 @@ export class StorageService {
       repeatType: row.repeat_type,
       repeatCount: row.repeat_count ?? 0,
       enabled: row.enabled,
+      communeId: row.commune_id || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -2130,6 +2417,33 @@ export class StorageService {
       endedAt: row.ended_at,
       status: row.status,
       message: row.message,
+    };
+  }
+
+  private toCommuneRecord(row: CommuneRow): CommuneRecord {
+    return {
+      communeId: row.commune_id,
+      name: row.name,
+      code: row.code,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private toAuthUserRecord(row: AppUserRow): AuthUserRecord {
+    const commune = Array.isArray(row.communes) ? row.communes[0] : row.communes;
+    return {
+      userId: row.user_id,
+      username: row.username,
+      passwordHash: row.password_hash,
+      displayName: row.display_name || null,
+      role: row.role,
+      communeId: row.commune_id || null,
+      communeName: commune?.name || null,
+      active: row.active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
   }
 
@@ -2147,6 +2461,7 @@ export class StorageService {
       status: row.status,
       startedBy: row.started_by,
       message: row.message,
+      communeId: row.commune_id || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -2166,6 +2481,9 @@ export class StorageService {
       receiverInstalledDate: row.receiver_installed_date || null,
       simRegisteredDate: row.sim_registered_date || null,
       androidId: row.android_id || null,
+      communeId: row.commune_id || null,
+      provisioningExpiresAt: row.provisioning_expires_at || null,
+      provisionedAt: row.provisioned_at || null,
       area: row.area,
       connectionType: row.connection_type,
       online: row.online,
@@ -2336,23 +2654,28 @@ export class StorageService {
 
   // ─── Emergency Broadcast Sessions ────────────────────────────────────────────
 
-  async listEmergencyBroadcastSessions(): Promise<EmergencyBroadcastRecord[]> {
-    const { data, error } = await this.supabase
+  async listEmergencyBroadcastSessions(communeId?: string | null): Promise<EmergencyBroadcastRecord[]> {
+    let query = this.supabase
       .from('emergency_broadcast_sessions')
       .select('*')
       .order('started_at', { ascending: false })
       .limit(100);
 
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query;
+
     if (error) throw new Error(`Khong doc duoc emergency_broadcast_sessions: ${error.message}`);
     return ((data || []) as EmergencyBroadcastSessionRow[]).map((row) => this.toEmergencyBroadcastRecord(row));
   }
 
-  async getEmergencyBroadcastSession(sessionId: string): Promise<EmergencyBroadcastRecord | null> {
-    const { data, error } = await this.supabase
+  async getEmergencyBroadcastSession(sessionId: string, communeId?: string | null): Promise<EmergencyBroadcastRecord | null> {
+    let query = this.supabase
       .from('emergency_broadcast_sessions')
       .select('*')
-      .eq('session_id', sessionId)
-      .maybeSingle();
+      .eq('session_id', sessionId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.maybeSingle();
 
     if (error) throw new Error(`Khong doc duoc emergency session: ${error.message}`);
     return data ? this.toEmergencyBroadcastRecord(data as EmergencyBroadcastSessionRow) : null;
@@ -2379,6 +2702,7 @@ export class StorageService {
       targetDeviceIds: string[];
       targetLabel: string;
     },
+    communeId?: string | null,
   ): Promise<EmergencyBroadcastRecord> {
     const startedAt = new Date();
     const scheduledEndAt = new Date(startedAt.getTime() + input.durationMinutes * 60 * 1000);
@@ -2396,6 +2720,7 @@ export class StorageService {
         started_at: startedAt.toISOString(),
         scheduled_end_at: scheduledEndAt.toISOString(),
         status: 'ACTIVE',
+        commune_id: communeId || null,
       })
       .select('*')
       .single();
@@ -2407,13 +2732,15 @@ export class StorageService {
   async finishEmergencyBroadcastSession(
     sessionId: string,
     status: 'FINISHED' | 'CANCELLED',
+    communeId?: string | null,
   ): Promise<EmergencyBroadcastRecord | null> {
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from('emergency_broadcast_sessions')
       .update({ status, ended_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('session_id', sessionId)
-      .select('*')
-      .maybeSingle();
+      .eq('session_id', sessionId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.select('*').maybeSingle();
 
     if (error) throw new Error(`Khong cap nhat duoc emergency session: ${error.message}`);
     return data ? this.toEmergencyBroadcastRecord(data as EmergencyBroadcastSessionRow) : null;
@@ -2464,6 +2791,7 @@ export class StorageService {
       scheduledEndAt: row.scheduled_end_at,
       endedAt: row.ended_at,
       status: row.status,
+      communeId: row.commune_id || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

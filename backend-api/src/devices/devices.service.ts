@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
+import { CurrentUser, getUserCommuneScope } from '../auth/auth.types';
 import { config } from '../config';
 import { BroadcastScheduleRecord } from '../schedules/schedule.types';
 import { StorageService } from '../storage/storage.service';
@@ -8,6 +10,7 @@ const RECORDING_MAX_DURATION_SECONDS = 60;
 const DEVICE_OFFLINE_AFTER_MS = 90_000;
 const DEVICE_OFFLINE_SCAN_INTERVAL_MS = 30_000;
 const RECORDING_SEGMENT_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const PROVISIONING_TOKEN_TTL_DAYS = 7;
 
 @Injectable()
 export class DevicesService implements OnModuleInit, OnModuleDestroy {
@@ -32,12 +35,12 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     if (this.recordingCleanupTimer) clearInterval(this.recordingCleanupTimer);
   }
 
-  listDevices() {
-    return this.storage.listDevices();
+  listDevices(user: CurrentUser) {
+    return this.storage.listDevices(getUserCommuneScope(user));
   }
 
-  async getDevice(deviceId: string) {
-    const device = await this.storage.getDevice(deviceId);
+  async getDevice(deviceId: string, user?: CurrentUser) {
+    const device = await this.storage.getDevice(deviceId, user ? getUserCommuneScope(user) : null);
     if (!device) throw new NotFoundException('Khong tim thay thiet bi.');
     return device;
   }
@@ -58,42 +61,43 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return this.storage.softDeleteDevice(deviceId);
   }
 
-  updatePlayAllowed(deviceId: string, playAllowed: boolean) {
+  async updatePlayAllowed(deviceId: string, playAllowed: boolean, user: CurrentUser) {
+    await this.getDevice(deviceId, user);
     return this.storage.updateDevicePlayAllowed(deviceId, playAllowed);
   }
 
-  async updateVolume(deviceId: string, volumeLevel: unknown) {
-    await this.getDevice(deviceId);
+  async updateVolume(deviceId: string, volumeLevel: unknown, user: CurrentUser) {
+    await this.getDevice(deviceId, user);
     return this.storage.updateDeviceVolume(deviceId, this.normalizeVolumeLevel(volumeLevel));
   }
 
-  async listRecordings(deviceId: string) {
-    await this.getDevice(deviceId);
+  async listRecordings(deviceId: string, user: CurrentUser) {
+    await this.getDevice(deviceId, user);
     return this.storage.listDeviceRecordings(deviceId);
   }
 
-  async listRecordingSegments(deviceId: string, query: { date?: string; sourceType?: string }) {
-    await this.getDevice(deviceId);
+  async listRecordingSegments(deviceId: string, query: { date?: string; sourceType?: string }, user: CurrentUser) {
+    await this.getDevice(deviceId, user);
     const date = this.normalizeSegmentDate(query.date);
     const sourceType = this.normalizeSegmentSourceType(query.sourceType);
     return this.storage.listDeviceRecordingSegments(deviceId, date, sourceType);
   }
 
-  async startRecording(deviceId: string) {
-    await this.getDevice(deviceId);
+  async startRecording(deviceId: string, user: CurrentUser) {
+    await this.getDevice(deviceId, user);
     return this.storage.startDeviceRecording(deviceId, RECORDING_MAX_DURATION_SECONDS);
   }
 
-  async stopRecording(deviceId: string, recordingId: string) {
-    await this.getDevice(deviceId);
+  async stopRecording(deviceId: string, recordingId: string, user: CurrentUser) {
+    await this.getDevice(deviceId, user);
     const normalizedRecordingId = String(recordingId || '').trim();
     if (!normalizedRecordingId) throw new BadRequestException('Vui long gui recordingId.');
     return this.storage.stopDeviceRecording(deviceId, normalizedRecordingId);
   }
 
-  async playNow(deviceId: string, scheduleId: string) {
-    const device = await this.getDevice(deviceId);
-    const schedule = await this.storage.getSchedule(scheduleId);
+  async playNow(deviceId: string, scheduleId: string, user: CurrentUser) {
+    const device = await this.getDevice(deviceId, user);
+    const schedule = await this.storage.getSchedule(scheduleId, getUserCommuneScope(user));
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
     await this.ensureScheduleDoesNotConflict(device.deviceId, schedule);
     await this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
@@ -122,8 +126,8 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async stop(deviceId: string) {
-    const device = await this.getDevice(deviceId);
+  async stop(deviceId: string, user: CurrentUser) {
+    const device = await this.getDevice(deviceId, user);
     await this.storage.updateDevicePlayAllowed(device.deviceId, false);
     await this.storage.createDevicePlaybackCommand(device.deviceId, 'STOP_PLAYBACK');
     return this.storage.updateDevicePlayback(device.deviceId, {
@@ -133,9 +137,9 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async syncScheduleToDevice(deviceId: string, scheduleId: string) {
-    const device = await this.getDevice(deviceId);
-    const schedule = await this.storage.getSchedule(scheduleId);
+  async syncScheduleToDevice(deviceId: string, scheduleId: string, user: CurrentUser) {
+    const device = await this.getDevice(deviceId, user);
+    const schedule = await this.storage.getSchedule(scheduleId, getUserCommuneScope(user));
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
     await this.ensureScheduleDoesNotConflict(device.deviceId, schedule);
 
@@ -145,11 +149,19 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async removeScheduleFromDevice(deviceId: string, scheduleId: string) {
-    await this.getDevice(deviceId);
-    const schedule = await this.storage.getSchedule(scheduleId);
+  async removeScheduleFromDevice(deviceId: string, scheduleId: string, user: CurrentUser) {
+    await this.getDevice(deviceId, user);
+    const schedule = await this.storage.getSchedule(scheduleId, getUserCommuneScope(user));
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
     return this.storage.removeDeviceSchedule(deviceId, schedule.scheduleId);
+  }
+
+  async createProvisioningToken(deviceId: string) {
+    await this.getDevice(deviceId);
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + PROVISIONING_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const device = await this.storage.saveDeviceProvisioningToken(deviceId, this.hashToken(token), expiresAt);
+    return { device, provisioningToken: token, expiresAt };
   }
 
   private async ensureScheduleDoesNotConflict(deviceId: string, schedule: BroadcastScheduleRecord) {
@@ -202,6 +214,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     const receiverInstalledDate = this.normalizeDate(input.receiverInstalledDate, 'Ngày lắp bộ thu');
     const simRegisteredDate = this.normalizeDate(input.simRegisteredDate, 'Ngày đăng ký SIM');
     const area = String(input.area || '').trim() || 'Chưa phân khu';
+    const communeId = String(input.communeId || '').trim() || null;
     const connectionType =
       input.connectionType === 'LAN' || input.connectionType === '4G' || input.connectionType === 'UNKNOWN'
         ? input.connectionType
@@ -212,7 +225,11 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     if (!name) throw new BadRequestException('Vui long nhap ten thiet bi.');
     if (!macAddress) throw new BadRequestException('Vui long nhap dia chi MAC.');
 
-    return { name, macAddress, simNumber, receiverInstalledDate, simRegisteredDate, area, connectionType, latitude, longitude };
+    return { name, macAddress, simNumber, receiverInstalledDate, simRegisteredDate, area, communeId, connectionType, latitude, longitude };
+  }
+
+  private hashToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   private normalizeDate(value: unknown, label: string) {

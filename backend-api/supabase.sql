@@ -1,19 +1,71 @@
+create table if not exists communes (
+  commune_id uuid primary key default gen_random_uuid(),
+  name text not null,
+  code text not null unique,
+  status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into communes (commune_id, name, code, status)
+values ('00000000-0000-0000-0000-000000000001', 'Xã mặc định', 'DEFAULT', 'ACTIVE')
+on conflict (code) do nothing;
+
+create table if not exists app_users (
+  user_id uuid primary key default gen_random_uuid(),
+  username text not null unique,
+  password_hash text not null,
+  display_name text,
+  role text not null check (role in ('SYSTEM_ADMIN', 'COMMUNE_USER')),
+  commune_id uuid references communes(commune_id) on delete restrict,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint app_users_commune_scope_check check (
+    (role = 'SYSTEM_ADMIN' and commune_id is null)
+    or
+    (role <> 'SYSTEM_ADMIN' and commune_id is not null)
+  )
+);
+
 create table if not exists audio_files (
   file_id uuid primary key,
   original_name text not null,
   storage_path text not null unique,
   size bigint not null,
   mimetype text not null,
+  commune_id uuid references communes(commune_id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+alter table audio_files
+add column if not exists commune_id uuid references communes(commune_id) on delete restrict;
+
+update audio_files
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
+
+create index if not exists idx_audio_files_commune_id
+on audio_files(commune_id);
+
 create table if not exists playlists (
   playlist_id uuid primary key default gen_random_uuid(),
   name text not null,
+  commune_id uuid references communes(commune_id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table playlists
+add column if not exists commune_id uuid references communes(commune_id) on delete restrict;
+
+update playlists
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
+
+create index if not exists idx_playlists_commune_id
+on playlists(commune_id);
 
 create table if not exists playlist_items (
   playlist_item_id uuid primary key default gen_random_uuid(),
@@ -44,6 +96,7 @@ create table if not exists broadcast_schedules (
   repeat_type text not null default 'ONCE' check (repeat_type in ('ONCE', 'DAILY', 'WEEKLY', 'MONTHLY')),
   repeat_count integer not null default 0 check (repeat_count between 0 and 30),
   enabled boolean not null default true,
+  commune_id uuid references communes(commune_id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint broadcast_schedules_time_check check (end_time > start_time),
@@ -56,6 +109,16 @@ create table if not exists broadcast_schedules (
 
 create index if not exists idx_broadcast_schedules_enabled
 on broadcast_schedules(enabled);
+
+alter table broadcast_schedules
+add column if not exists commune_id uuid references communes(commune_id) on delete restrict;
+
+update broadcast_schedules
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
+
+create index if not exists idx_broadcast_schedules_commune_id
+on broadcast_schedules(commune_id);
 
 create index if not exists idx_broadcast_schedules_time
 on broadcast_schedules(start_date, start_time, end_time);
@@ -100,9 +163,20 @@ create table if not exists live_broadcast_sessions (
   status text not null check (status in ('STARTED', 'FINISHED', 'FAILED', 'DELETED')),
   started_by text,
   message text,
+  commune_id uuid references communes(commune_id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table live_broadcast_sessions
+add column if not exists commune_id uuid references communes(commune_id) on delete restrict;
+
+update live_broadcast_sessions
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
+
+create index if not exists idx_live_broadcast_sessions_commune_id
+on live_broadcast_sessions(commune_id);
 
 create index if not exists idx_live_broadcast_sessions_started_at
 on live_broadcast_sessions(started_at desc);
@@ -119,6 +193,10 @@ create table if not exists devices (
   sim_registered_date date,
   android_id text,
   device_token_hash text,
+  commune_id uuid references communes(commune_id) on delete restrict,
+  provisioning_token_hash text,
+  provisioning_expires_at timestamptz,
+  provisioned_at timestamptz,
   area text not null,
   connection_type text not null default 'UNKNOWN' check (connection_type in ('LAN', '4G', 'UNKNOWN')),
   online boolean not null default false,
@@ -142,6 +220,30 @@ add column if not exists android_id text;
 
 alter table devices
 add column if not exists device_token_hash text;
+
+alter table devices
+add column if not exists commune_id uuid references communes(commune_id) on delete restrict;
+
+alter table devices
+add column if not exists provisioning_token_hash text;
+
+alter table devices
+add column if not exists provisioning_expires_at timestamptz;
+
+alter table devices
+add column if not exists provisioned_at timestamptz;
+
+update devices
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
+
+create index if not exists idx_devices_commune_id
+on devices(commune_id)
+where deleted_at is null;
+
+create index if not exists idx_devices_provisioning_token_hash
+on devices(provisioning_token_hash)
+where provisioning_token_hash is not null and deleted_at is null;
 
 alter table devices
 add column if not exists play_status text not null default 'IDLE';

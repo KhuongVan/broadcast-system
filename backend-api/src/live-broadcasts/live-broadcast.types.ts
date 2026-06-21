@@ -14,6 +14,7 @@ export type LiveBroadcastRecord = {
   status: LiveBroadcastStatus;
   startedBy: string | null;
   message: string | null;
+  communeId: string | null;
   createdAt: string;
   updatedAt: string;
 };

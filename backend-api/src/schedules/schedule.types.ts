@@ -18,6 +18,7 @@ export type BroadcastScheduleRecord = {
   repeatType: ScheduleRepeatType;
   repeatCount: number;
   enabled: boolean;
+  communeId: string | null;
   createdAt: string;
   updatedAt: string;
 };

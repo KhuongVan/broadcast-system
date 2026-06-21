@@ -13,7 +13,8 @@ export type ViewKey =
   | 'schedules:files'
   | 'live'
   | 'emergency'
-  | 'reports';
+  | 'reports'
+  | 'system';
 
 type ParentKey = 'devices' | 'schedules';
 
@@ -62,6 +63,7 @@ const menu: MenuEntry[] = [
   { key: 'emergency', label: 'Phát khẩn cấp', icon: '⚠', eyebrow: 'Phát khẩn cấp từ nguồn RTSP/HLS' },
   { key: 'live', label: 'Phát trực tiếp', icon: '●', eyebrow: 'Live mic và phát file' },
   { key: 'reports', label: 'Báo cáo thống kê', icon: '▥', eyebrow: 'Số liệu tổng hợp' },
+  { key: 'system', label: 'Quản trị hệ thống', icon: '▣', eyebrow: 'Xã, user và provisioning' },
 ];
 
 type ShellProps = {
@@ -110,7 +112,7 @@ export function Shell({ activeView, children, session, onChangeView, onLogout }:
           </div>
         </div>
         <nav className="nav-list">
-          {menu.map((item) => {
+          {menu.filter((item) => item.key !== 'system' || session.role === 'SYSTEM_ADMIN').map((item) => {
             if ('children' in item) {
               const expanded = expandedGroups.has(item.key);
               const active = activeParent === item.key;
@@ -173,7 +175,7 @@ export function Shell({ activeView, children, session, onChangeView, onLogout }:
             </div>
             <div className="account">
               <span className="avatar">{(session.username || 'A').slice(0, 1).toUpperCase()}</span>
-              <span>{session.username || 'Admin'}</span>
+              <span>{session.displayName || session.username || 'Admin'}{session.communeName ? ` · ${session.communeName}` : ''}</span>
             </div>
             <button className="ghost" onClick={onLogout} type="button">
               Đăng xuất

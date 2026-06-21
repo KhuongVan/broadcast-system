@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { CurrentUser, getUserCommuneScope } from '../auth/auth.types';
 import { BroadcastGateway } from '../broadcast/broadcast.gateway';
 import { config } from '../config';
 import { MediaService } from '../media/media.service';
@@ -25,11 +26,12 @@ export class EmergencyBroadcastsService {
     private readonly media: MediaService,
   ) {}
 
-  listSessions() {
-    return this.storage.listEmergencyBroadcastSessions();
+  listSessions(user: CurrentUser) {
+    return this.storage.listEmergencyBroadcastSessions(getUserCommuneScope(user));
   }
 
-  async startSession(input: Partial<EmergencyBroadcastStartInput>) {
+  async startSession(input: Partial<EmergencyBroadcastStartInput>, user: CurrentUser) {
+    const communeId = getUserCommuneScope(user);
     const sourceId = (input.sourceId || '').trim();
     const deviceIds = Array.isArray(input.deviceIds) ? input.deviceIds.filter(Boolean) : [];
     const durationMinutes = Number(input.durationMinutes);
@@ -39,6 +41,8 @@ export class EmergencyBroadcastsService {
     if (!Number.isFinite(durationMinutes) || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 300) {
       throw new BadRequestException('Thời lượng phải là số phút từ 1 đến 300.');
     }
+    const devices = await Promise.all(deviceIds.map((deviceId) => this.storage.getDevice(deviceId, communeId)));
+    if (devices.some((device) => !device)) throw new NotFoundException('Không tìm thấy thiết bị trong phạm vi xã.');
 
     const source = await this.storage.getEmergencySource(sourceId);
     if (!source) throw new NotFoundException('Không tìm thấy nguồn phát.');
@@ -63,8 +67,8 @@ export class EmergencyBroadcastsService {
       targetDeviceIds: deviceIds,
       targetLabel,
       durationMinutes,
-      startedBy: input.startedBy || 'Admin',
-    });
+      startedBy: input.startedBy || user.displayName || user.username,
+    }, communeId);
 
     try {
       this.gateway.beginEmergencyStartup(session.sessionId);
@@ -105,7 +109,7 @@ export class EmergencyBroadcastsService {
     } catch (error) {
       this.clearRetryTimer();
       this.activeRuntime = null;
-      await this.storage.finishEmergencyBroadcastSession(session.sessionId, 'CANCELLED').catch(() => null);
+      await this.storage.finishEmergencyBroadcastSession(session.sessionId, 'CANCELLED', communeId).catch(() => null);
       this.media.stop('emergency_start_failed');
       this.gateway.stopEmergencyOnDevices(deviceIds);
       this.gateway.clearActiveEmergency(session.sessionId);
@@ -115,14 +119,15 @@ export class EmergencyBroadcastsService {
     return session;
   }
 
-  async stopSession(sessionId: string) {
-    const session = await this.storage.getEmergencyBroadcastSession(sessionId);
+  async stopSession(sessionId: string, user: CurrentUser) {
+    const communeId = getUserCommuneScope(user);
+    const session = await this.storage.getEmergencyBroadcastSession(sessionId, communeId);
     if (!session) throw new NotFoundException('Không tìm thấy phiên phát khẩn cấp.');
     if (session.status !== 'ACTIVE') {
       throw new BadRequestException('Phiên phát khẩn cấp đã kết thúc.');
     }
 
-    const updated = await this.storage.finishEmergencyBroadcastSession(sessionId, 'CANCELLED');
+    const updated = await this.storage.finishEmergencyBroadcastSession(sessionId, 'CANCELLED', communeId);
     if (!updated) throw new NotFoundException('Không tìm thấy phiên phát khẩn cấp.');
 
     this.clearAutoFinishTimer();

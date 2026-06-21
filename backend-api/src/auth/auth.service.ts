@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { randomBytes, timingSafeEqual } from 'crypto';
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'crypto';
 import { Request, Response } from 'express';
+import { promisify } from 'util';
 import { config } from '../config';
+import { StorageService } from '../storage/storage.service';
+import { CurrentUser } from './auth.types';
 
 const SESSION_COOKIE = 'admin_session';
+const scrypt = promisify(scryptCallback);
 
 type SessionRecord = {
-  username: string;
+  user: CurrentUser;
   expiresAt: number;
 };
 
@@ -14,23 +18,53 @@ type SessionRecord = {
 export class AuthService {
   private readonly sessions = new Map<string, SessionRecord>();
 
-  constructor() {
+  constructor(private readonly storage: StorageService) {
     if (!config.adminUsername || !config.adminPassword) {
       throw new Error('Thieu ADMIN_USERNAME hoac ADMIN_PASSWORD.');
     }
   }
 
-  login(username: string, password: string) {
+  async login(username: string, password: string) {
     this.cleanupExpiredSessions();
 
-    if (!this.secureEquals(username, config.adminUsername) || !this.secureEquals(password, config.adminPassword)) {
-      return null;
+    const user = await this.storage.getAuthUserByUsername(username);
+    if (user) {
+      if (!user.active || !(await this.verifyPassword(password, user.passwordHash))) return null;
+
+      const token = randomBytes(32).toString('base64url');
+      const expiresAt = Date.now() + config.sessionTtlSeconds * 1000;
+      this.sessions.set(token, {
+        user: {
+          userId: user.userId,
+          username: user.username,
+          displayName: user.displayName,
+          role: user.role,
+          communeId: user.communeId,
+          communeName: user.communeName,
+        },
+        expiresAt,
+      });
+      return { token, expiresAt };
     }
 
-    const token = randomBytes(32).toString('base64url');
-    const expiresAt = Date.now() + config.sessionTtlSeconds * 1000;
-    this.sessions.set(token, { username, expiresAt });
-    return { token, expiresAt };
+    if (this.secureEquals(username, config.adminUsername) && this.secureEquals(password, config.adminPassword)) {
+      const token = randomBytes(32).toString('base64url');
+      const expiresAt = Date.now() + config.sessionTtlSeconds * 1000;
+      this.sessions.set(token, {
+        user: {
+          userId: 'env-system-admin',
+          username,
+          displayName: 'System Admin',
+          role: 'SYSTEM_ADMIN',
+          communeId: null,
+          communeName: null,
+        },
+        expiresAt,
+      });
+      return { token, expiresAt };
+    }
+
+    return null;
   }
 
   logout(request: Request) {
@@ -62,16 +96,31 @@ export class AuthService {
     return token ? this.isTokenAuthenticated(token) : false;
   }
 
+  getRequestUser(request: Request) {
+    return this.getRequestSession(request)?.user || null;
+  }
+
   getRequestSession(request: Request) {
     const token = this.getSessionTokenFromRequest(request);
     if (!token || !this.isTokenAuthenticated(token)) return null;
     return this.sessions.get(token) || null;
   }
 
-  isCookieHeaderAuthenticated(cookieHeader?: string | string[]) {
+  getCookieHeaderUser(cookieHeader?: string | string[]) {
     const cookies = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader || '';
     const token = this.getCookieValue(cookies, SESSION_COOKIE);
-    return token ? this.isTokenAuthenticated(token) : false;
+    if (!token || !this.isTokenAuthenticated(token)) return null;
+    return this.sessions.get(token)?.user || null;
+  }
+
+  isCookieHeaderAuthenticated(cookieHeader?: string | string[]) {
+    return Boolean(this.getCookieHeaderUser(cookieHeader));
+  }
+
+  async hashPassword(password: string) {
+    const salt = randomBytes(16).toString('base64url');
+    const key = (await scrypt(password, salt, 64)) as Buffer;
+    return `scrypt$${salt}$${key.toString('base64url')}`;
   }
 
   private isTokenAuthenticated(token: string) {
@@ -103,6 +152,15 @@ export class AuthService {
     const leftBuffer = Buffer.from(left);
     const rightBuffer = Buffer.from(right);
     return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+  }
+
+  private async verifyPassword(password: string, passwordHash: string) {
+    const [algorithm, salt, expectedKey] = passwordHash.split('$');
+    if (algorithm !== 'scrypt' || !salt || !expectedKey) return false;
+
+    const key = (await scrypt(password, salt, 64)) as Buffer;
+    const expected = Buffer.from(expectedKey, 'base64url');
+    return key.length === expected.length && timingSafeEqual(key, expected);
   }
 
   private cleanupExpiredSessions() {

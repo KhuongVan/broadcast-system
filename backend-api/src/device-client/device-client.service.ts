@@ -43,40 +43,24 @@ export class DeviceClientService {
   constructor(private readonly storage: StorageService) {}
 
   async register(body: DeviceClientRegisterBody) {
-    const deviceId = this.optionalText(body.deviceId);
+    const provisioningToken = this.optionalText(body.provisioningToken);
     const androidId = this.optionalText(body.androidId);
-    const macAddressInput = this.optionalText(body.macAddress)?.toUpperCase() || null;
-
-    if (!deviceId && !androidId && !macAddressInput) {
-      throw new BadRequestException('Vui long gui deviceId, androidId hoac macAddress.');
+    if (!provisioningToken) throw new BadRequestException('Vui long gui provisioningToken.');
+    const provisioningTokenHash = this.hashToken(provisioningToken);
+    const existing = await this.storage.getDeviceByProvisioningTokenHash(provisioningTokenHash);
+    if (!existing) throw new UnauthorizedException('Provisioning token khong hop le hoac da duoc su dung.');
+    if (!existing.provisioningExpiresAt || new Date(existing.provisioningExpiresAt).getTime() <= Date.now()) {
+      throw new UnauthorizedException('Provisioning token da het han.');
     }
 
-    const macAddress = macAddressInput || (androidId ? `ANDROID:${androidId}` : null);
-    let existing = deviceId && this.isUuid(deviceId) ? await this.storage.getDevice(deviceId) : null;
-    if (!existing) {
-      existing = await this.storage.findDeviceForClientRegistration({ androidId, macAddress: macAddressInput });
-    }
-    if (deviceId && !existing && !androidId && !macAddressInput) {
-      throw new NotFoundException('Khong tim thay thiet bi theo deviceId.');
-    }
-    if (!existing && !macAddress) {
-      throw new BadRequestException('Vui long gui androidId hoac macAddress de tao thiet bi moi.');
-    }
     const appVersion = this.optionalText(body.appVersion);
     const connectionType = this.normalizeConnectionType(body.connectionType);
-    const createMacAddress = macAddress || '';
-    let device = existing
-      ? await this.storage.updateDeviceClientRegistration(existing.deviceId, { androidId, appVersion, connectionType })
-      : await this.storage.createDeviceClient({
-          androidId,
-          macAddress: createMacAddress,
-          name: this.normalizeDeviceName(body.name, androidId, createMacAddress),
-          connectionType: connectionType || 'UNKNOWN',
-          appVersion,
-        });
-
     const deviceToken = this.generateToken();
-    device = await this.storage.saveDeviceClientToken(device.deviceId, this.hashToken(deviceToken));
+    const device = await this.storage.markDeviceProvisioned(existing.deviceId, provisioningTokenHash, this.hashToken(deviceToken), {
+      androidId,
+      appVersion,
+      connectionType: connectionType || undefined,
+    });
 
     return {
       device: this.toClientDevice(device),

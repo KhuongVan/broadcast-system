@@ -7,6 +7,7 @@ export type DeviceClientRequest = Request & {
 
 export type DeviceClientRegisterBody = {
   deviceId?: string;
+  provisioningToken?: string;
   androidId?: string;
   macAddress?: string;
   name?: string;

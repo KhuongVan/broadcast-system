@@ -13,21 +13,22 @@ Tai lieu nay mo ta API danh cho app Android/WebView dong vai tro thiet bi phat t
 Authorization: Bearer <deviceToken>
 ```
 
-`deviceToken` chi duoc tra ve khi register. App Android can luu token vao storage local an toan va dung lai cho cac lan goi sau.
+`deviceToken` chi duoc tra ve khi register bang provisioning token. App Android can luu token vao storage local an toan va dung lai cho cac lan goi sau.
 
-Neu app bi mat token, goi lai `POST /register` bang cung `androidId` hoac `macAddress`; backend se cap token moi cho cung thiet bi neu tim thay.
+Neu app bi mat token, admin he thong can sinh provisioning token moi cho thiet bi trong admin UI/API.
 
 ## Luong tich hop de xuat
 
-1. App mo lan dau, lay `androidId` va neu co thi lay them `macAddress`; browser simulator co the dung `deviceId` cua thiet bi da tao.
-2. Goi `POST /api/device-client/register`.
-3. Luu `deviceToken` tu response.
-4. Goi `POST /api/device-client/heartbeat` moi `heartbeatIntervalSeconds` giay.
-5. Poll `GET /api/device-client/config`, `GET /api/device-client/schedule`, va `GET /api/device-client/commands` moi `pollIntervalSeconds` giay.
-6. Khi bat dau phat, dung phat, hoac gap loi, goi `POST /api/device-client/playback-state`.
-7. Khi tai/sync lich xong, goi `POST /api/device-client/sync-result`.
-8. Khi can test mic cua Android, thu mot doan ngan va upload bang `POST /api/device-client/mic-test-upload`.
-9. Khi thiet bi bat dau phat, tu ghi toi da 60 giay dau va upload bang `POST /api/device-client/playback-recording-upload` de lam bang chung phat thanh.
+1. Admin he thong tao thiet bi va sinh provisioning token mot lan cho thiet bi.
+2. App mo lan dau, lay provisioning token tu qua trinh lap dat, kem `androidId` neu co.
+3. Goi `POST /api/device-client/register`.
+4. Luu `deviceToken` tu response.
+5. Goi `POST /api/device-client/heartbeat` moi `heartbeatIntervalSeconds` giay.
+6. Poll `GET /api/device-client/config`, `GET /api/device-client/schedule`, va `GET /api/device-client/commands` moi `pollIntervalSeconds` giay.
+7. Khi bat dau phat, dung phat, hoac gap loi, goi `POST /api/device-client/playback-state`.
+8. Khi tai/sync lich xong, goi `POST /api/device-client/sync-result`.
+9. Khi can test mic cua Android, thu mot doan ngan va upload bang `POST /api/device-client/mic-test-upload`.
+10. Khi thiet bi bat dau phat, tu ghi toi da 60 giay dau va upload bang `POST /api/device-client/playback-recording-upload` de lam bang chung phat thanh.
 
 ## Endpoint reference
 
@@ -43,10 +44,8 @@ Request body:
 
 ```json
 {
-  "deviceId": "11111111-1111-1111-1111-111111111111",
+  "provisioningToken": "one-time-token-from-admin",
   "androidId": "a1b2c3d4e5f6",
-  "macAddress": "22:22:E5:6C:16:F4",
-  "name": "Android Box Test 01",
   "connectionType": "LAN",
   "appVersion": "1.0.0"
 }
@@ -54,10 +53,10 @@ Request body:
 
 Notes:
 
-- Gui `deviceId`, `androidId`, hoac `macAddress` bat buoc co it nhat mot truong.
-- `deviceId` dung cho thiet bi da ton tai trong he thong, phu hop browser simulator va test theo UUID.
-- `macAddress` la optional. Neu Android khong lay duoc MAC, chi can gui `androidId`.
-- `connectionType` nhan `LAN`, `4G`, hoac `UNKNOWN`. Neu khong gui, backend luu `UNKNOWN` cho thiet bi moi.
+- `provisioningToken` la bat buoc, do admin he thong sinh cho thiet bi da tao san.
+- Token provisioning dung mot lan va co han dung; register thanh cong se vo hieu token nay.
+- `androidId` la optional nhung nen gui de backend gan danh tinh Android vao thiet bi.
+- `connectionType` nhan `LAN`, `4G`, hoac `UNKNOWN`.
 - Neu thiet bi chua ton tai, backend tu tao thiet bi moi voi area mac dinh `Chưa phân khu`.
 - Neu da ton tai theo `androidId` hoac `macAddress`, backend tai su dung thiet bi cu va cap token moi.
 

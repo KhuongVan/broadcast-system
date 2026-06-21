@@ -1,5 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { CurrentUser as CurrentUserType } from '../auth/auth.types';
 import { MediaService } from '../media/media.service';
 import { ScheduleInput } from './schedule.types';
 import { SchedulesService } from './schedules.service';
@@ -13,13 +15,13 @@ export class SchedulesController {
   ) {}
 
   @Get()
-  async list() {
-    return { schedules: await this.schedules.listSchedules() };
+  async list(@CurrentUser() user: CurrentUserType) {
+    return { schedules: await this.schedules.listSchedules(user) };
   }
 
   @Post()
-  async create(@Body() body: ScheduleInput) {
-    return { schedule: await this.schedules.createSchedule(body) };
+  async create(@Body() body: ScheduleInput, @CurrentUser() user: CurrentUserType) {
+    return { schedule: await this.schedules.createSchedule(body, user) };
   }
 
   @Post('/test-rtsp')
@@ -38,18 +40,18 @@ export class SchedulesController {
   }
 
   @Get('/:scheduleId')
-  async get(@Param('scheduleId') scheduleId: string) {
-    return { schedule: await this.schedules.getSchedule(scheduleId) };
+  async get(@Param('scheduleId') scheduleId: string, @CurrentUser() user: CurrentUserType) {
+    return { schedule: await this.schedules.getSchedule(scheduleId, user) };
   }
 
   @Put('/:scheduleId')
-  async update(@Param('scheduleId') scheduleId: string, @Body() body: ScheduleInput) {
-    return { schedule: await this.schedules.updateSchedule(scheduleId, body) };
+  async update(@Param('scheduleId') scheduleId: string, @Body() body: ScheduleInput, @CurrentUser() user: CurrentUserType) {
+    return { schedule: await this.schedules.updateSchedule(scheduleId, body, user) };
   }
 
   @Delete('/:scheduleId')
-  async delete(@Param('scheduleId') scheduleId: string) {
-    await this.schedules.deleteSchedule(scheduleId);
+  async delete(@Param('scheduleId') scheduleId: string, @CurrentUser() user: CurrentUserType) {
+    await this.schedules.deleteSchedule(scheduleId, user);
     return { success: true };
   }
 }

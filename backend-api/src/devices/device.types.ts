@@ -25,6 +25,9 @@ export type DeviceRecord = {
   receiverInstalledDate: string | null;
   simRegisteredDate: string | null;
   androidId: string | null;
+  communeId: string | null;
+  provisioningExpiresAt: string | null;
+  provisionedAt: string | null;
   area: string;
   connectionType: DeviceConnectionType;
   online: boolean;
@@ -61,6 +64,7 @@ export type DeviceInput = {
   receiverInstalledDate: string | null;
   simRegisteredDate: string | null;
   area: string;
+  communeId?: string | null;
   connectionType?: DeviceConnectionType;
   latitude: number | null;
   longitude: number | null;

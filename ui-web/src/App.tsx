@@ -11,6 +11,7 @@ import { ReportsView } from './components/ReportsView';
 import { ScheduleManagementView } from './components/ScheduleManagementView';
 import { SchedulesView } from './components/SchedulesView';
 import { Shell, type ViewKey } from './components/Shell';
+import { SystemAdminView } from './components/SystemAdminView';
 import { ToastProvider } from './components/Toast';
 import { adminApi } from './lib/api';
 import type { Session } from './lib/types';
@@ -98,6 +99,7 @@ function AdminApp() {
             onChangeSection={(section) => navigateToView(`devices:${section}`)}
             onStartEmergency={openEmergencyForDevice}
             onStartLive={openLiveForDevice}
+            session={session}
           />
         ) : null}
         {activeView.startsWith('schedules:') ? (
@@ -122,6 +124,7 @@ function AdminApp() {
           />
         ) : null}
         {activeView === 'reports' ? <ReportsView /> : null}
+        {activeView === 'system' && session.role === 'SYSTEM_ADMIN' ? <SystemAdminView /> : null}
       </Shell>
     </ToastProvider>
   );
@@ -152,6 +155,7 @@ const viewPathMap = {
   emergency: '/emergency',
   live: '/live',
   reports: '/reports',
+  system: '/system',
 } satisfies Record<ViewKey, string>;
 
 const pathViewMap = new Map<string, ViewKey>(

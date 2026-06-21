@@ -13,6 +13,7 @@ export type EmergencyBroadcastRecord = {
   scheduledEndAt: string;
   endedAt: string | null;
   status: EmergencyBroadcastStatus;
+  communeId: string | null;
   createdAt: string;
   updatedAt: string;
 };

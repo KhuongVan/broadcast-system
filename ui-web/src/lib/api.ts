@@ -1,5 +1,7 @@
 import type {
   AudioFile,
+  AppUser,
+  Commune,
   Device,
   DeviceInput,
   DeviceRecordingSegment,
@@ -69,6 +71,33 @@ export const adminApi = {
     api<{ authenticated: false }>('/api/auth/logout', {
       method: 'POST',
     }),
+  listCommunes: () => api<{ communes: Commune[] }>('/api/communes'),
+  createCommune: (input: { name: string; code: string; status: 'ACTIVE' | 'INACTIVE' }) =>
+    api<{ commune: Commune }>('/api/communes', {
+      method: 'POST',
+      json: input,
+    }),
+  updateCommune: (communeId: string, input: { name: string; code: string; status: 'ACTIVE' | 'INACTIVE' }) =>
+    api<{ commune: Commune }>(`/api/communes/${communeId}`, {
+      method: 'PUT',
+      json: input,
+    }),
+  listUsers: () => api<{ users: AppUser[] }>('/api/users'),
+  createUser: (input: { username: string; password: string; displayName: string | null; role: string; communeId: string | null; active: boolean }) =>
+    api<{ user: AppUser }>('/api/users', {
+      method: 'POST',
+      json: input,
+    }),
+  updateUser: (userId: string, input: { displayName: string | null; role: string; communeId: string | null; active: boolean }) =>
+    api<{ user: AppUser }>(`/api/users/${userId}`, {
+      method: 'PUT',
+      json: input,
+    }),
+  resetUserPassword: (userId: string, password: string) =>
+    api<{ user: AppUser }>(`/api/users/${userId}/reset-password`, {
+      method: 'POST',
+      json: { password },
+    }),
   listFiles: () => api<{ files: AudioFile[] }>('/api/files'),
   uploadFile: (file: File) => {
     const formData = new FormData();
@@ -137,6 +166,10 @@ export const adminApi = {
   deleteDevice: (deviceId: string) =>
     api<{ device: Device }>(`/api/devices/${deviceId}`, {
       method: 'DELETE',
+    }),
+  createDeviceProvisioningToken: (deviceId: string) =>
+    api<{ device: Device; provisioningToken: string; expiresAt: string }>(`/api/devices/${deviceId}/provisioning-token`, {
+      method: 'POST',
     }),
   updateDevicePlayAllowed: (deviceId: string, playAllowed: boolean) =>
     api<{ device: Device }>(`/api/devices/${deviceId}/play-allowed`, {

@@ -1,7 +1,32 @@
 export type Session = {
   authenticated: boolean;
   username: string | null;
+  displayName: string | null;
+  role: 'SYSTEM_ADMIN' | 'COMMUNE_USER' | string | null;
+  communeId: string | null;
+  communeName: string | null;
   expiresAt: string | null;
+};
+
+export type Commune = {
+  communeId: string;
+  name: string;
+  code: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AppUser = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  role: 'SYSTEM_ADMIN' | 'COMMUNE_USER' | string;
+  communeId: string | null;
+  communeName: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AudioFile = {
@@ -81,6 +106,7 @@ export type DeviceInput = {
   receiverInstalledDate: string | null;
   simRegisteredDate: string | null;
   area: string;
+  communeId?: string | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -93,6 +119,9 @@ export type Device = {
   receiverInstalledDate: string | null;
   simRegisteredDate: string | null;
   androidId: string | null;
+  communeId: string | null;
+  provisioningExpiresAt: string | null;
+  provisionedAt: string | null;
   area: string;
   connectionType: 'LAN' | '4G' | 'UNKNOWN';
   online: boolean;

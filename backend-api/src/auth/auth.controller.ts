@@ -7,11 +7,11 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('/login')
-  login(
+  async login(
     @Body() body: { username?: string; password?: string },
     @Res({ passthrough: true }) response: Response,
   ) {
-    const session = this.auth.login(body.username || '', body.password || '');
+    const session = await this.auth.login(body.username || '', body.password || '');
     if (!session) {
       throw new UnauthorizedException('Sai ten dang nhap hoac mat khau.');
     }
@@ -30,9 +30,14 @@ export class AuthController {
   @Get('/me')
   me(@Req() request: Request) {
     const session = this.auth.getRequestSession(request);
+    const user = session?.user || null;
     return {
       authenticated: Boolean(session),
-      username: session?.username || null,
+      username: user?.username || null,
+      displayName: user?.displayName || null,
+      role: user?.role || null,
+      communeId: user?.communeId || null,
+      communeName: user?.communeName || null,
       expiresAt: session ? new Date(session.expiresAt).toISOString() : null,
     };
   }

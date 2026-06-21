@@ -16,6 +16,8 @@ import { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { extname } from 'path';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { CurrentUser as CurrentUserType } from '../auth/auth.types';
 import { config } from '../config';
 import { AudioFilesService } from './audio-files.service';
 
@@ -32,8 +34,9 @@ export class AudioFilesController {
   constructor(private readonly audioFiles: AudioFilesService) {}
 
   @Get('/api/files')
-  async listFiles() {
-    return { files: await this.audioFiles.listFiles() };
+  @UseGuards(AdminAuthGuard)
+  async listFiles(@CurrentUser() user: CurrentUserType) {
+    return { files: await this.audioFiles.listFiles(user) };
   }
 
   @Post('/upload')
@@ -48,12 +51,12 @@ export class AudioFilesController {
       },
     }),
   )
-  async upload(@UploadedFile() file?: Express.Multer.File) {
+  async upload(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: CurrentUserType) {
     if (!file) {
       throw new BadRequestException('Vui long chon file MP3 hop le.');
     }
 
-    const record = await this.audioFiles.registerUpload(file);
+    const record = await this.audioFiles.registerUpload(file, user);
     return {
       success: true,
       ...record,

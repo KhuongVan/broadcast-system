@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { adminApi } from '../lib/api';
 import { formatDateTime, formatStatus } from '../lib/format';
 import type {
+  Commune,
   Device,
   DeviceInput,
   DeviceRecordingSegment,
@@ -11,6 +12,7 @@ import type {
   DeviceScheduleAssignment,
   RecordingProofSourceType,
   Schedule,
+  Session,
 } from '../lib/types';
 import { DataState } from './DataState';
 import { Modal } from './Modal';
@@ -28,6 +30,7 @@ type DevicesViewProps = {
   onChangeSection: (section: DeviceSectionKey) => void;
   onStartEmergency: (deviceId: string) => void;
   onStartLive: (deviceId: string) => void;
+  session: Session;
 };
 
 const emptyDevice: DeviceInput = {
@@ -37,14 +40,16 @@ const emptyDevice: DeviceInput = {
   receiverInstalledDate: null,
   simRegisteredDate: null,
   area: '',
+  communeId: null,
   latitude: null,
   longitude: null,
 };
 
-export function DevicesView({ activeSection, onChangeSection, onStartEmergency, onStartLive }: DevicesViewProps) {
+export function DevicesView({ activeSection, onChangeSection, onStartEmergency, onStartLive, session }: DevicesViewProps) {
   const { showToast } = useToast();
   const [devices, setDevices] = useState<Device[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [communes, setCommunes] = useState<Commune[]>([]);
   const [form, setForm] = useState<DeviceInput>(emptyDevice);
   const [editingId, setEditingId] = useState('');
   const [selectedScheduleId, setSelectedScheduleId] = useState('');
@@ -105,9 +110,14 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     if (showLoading) setLoading(true);
     setError('');
     try {
-      const [deviceData, scheduleData] = await Promise.all([adminApi.listDevices(), adminApi.listSchedules()]);
+      const [deviceData, scheduleData, communeData] = await Promise.all([
+        adminApi.listDevices(),
+        adminApi.listSchedules(),
+        session.role === 'SYSTEM_ADMIN' ? adminApi.listCommunes() : Promise.resolve({ communes: [] }),
+      ]);
       setDevices(deviceData.devices);
       setSchedules(scheduleData.schedules);
+      setCommunes(communeData.communes);
       setSelectedDeviceIds((current) => new Set([...current].filter((deviceId) => deviceData.devices.some((device) => device.deviceId === deviceId))));
       setSelectedScheduleId((current) => current || scheduleData.schedules[0]?.scheduleId || '');
     } catch (err) {
@@ -132,6 +142,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
       receiverInstalledDate: device.receiverInstalledDate,
       simRegisteredDate: device.simRegisteredDate,
       area: device.area,
+      communeId: device.communeId,
       latitude: device.latitude,
       longitude: device.longitude,
     });
@@ -143,7 +154,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
 
   function resetForm() {
     setEditingId('');
-    setForm(emptyDevice);
+    setForm({ ...emptyDevice, communeId: session.role === 'SYSTEM_ADMIN' ? communes[0]?.communeId || null : session.communeId });
   }
 
   function openCreateModal() {
@@ -714,6 +725,19 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                       Khu vực
                       <input value={form.area} onChange={(event) => update('area', event.target.value)} placeholder="Chưa phân khu" />
                     </label>
+                    {session.role === 'SYSTEM_ADMIN' ? (
+                      <label>
+                        Xã
+                        <select value={form.communeId || ''} onChange={(event) => update('communeId', event.target.value || null)} required>
+                          <option value="">Chọn xã</option>
+                          {communes.map((commune) => (
+                            <option key={commune.communeId} value={commune.communeId}>
+                              {commune.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     <label>
                       Vĩ độ (Latitude)
                       <input type="number" step="any" value={form.latitude ?? ''} onChange={(event) => update('latitude', event.target.value ? Number(event.target.value) : null)} placeholder="VD: 10.762622" />
@@ -723,7 +747,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                       <input type="number" step="any" value={form.longitude ?? ''} onChange={(event) => update('longitude', event.target.value ? Number(event.target.value) : null)} placeholder="VD: 106.660172" />
                     </label>
                     <div className="row-actions">
-                      <button className="primary" disabled={saving || !form.name.trim() || !form.macAddress.trim()}>
+                      <button className="primary" disabled={saving || !form.name.trim() || !form.macAddress.trim() || (session.role === 'SYSTEM_ADMIN' && !form.communeId)}>
                         {editingId ? 'Lưu thiết bị' : 'Thêm thiết bị'}
                       </button>
                       <button className="ghost" onClick={closeModal} type="button">

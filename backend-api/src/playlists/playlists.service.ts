@@ -1,31 +1,39 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { CurrentUser, getUserCommuneScope } from '../auth/auth.types';
 import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class PlaylistsService {
   constructor(private readonly storage: StorageService) {}
 
-  listPlaylists() {
-    return this.storage.listPlaylists();
+  listPlaylists(user?: CurrentUser) {
+    return this.storage.listPlaylists(user ? getUserCommuneScope(user) : null);
   }
 
-  getPlaylist(playlistId: string) {
-    return this.storage.getPlaylist(playlistId);
+  getPlaylist(playlistId: string, user?: CurrentUser) {
+    return this.storage.getPlaylist(playlistId, user ? getUserCommuneScope(user) : null);
   }
 
-  createPlaylist(name: string) {
-    return this.storage.createPlaylist(name);
+  createPlaylist(name: string, user: CurrentUser) {
+    return this.storage.createPlaylist(name, getUserCommuneScope(user));
   }
 
-  updatePlaylist(playlistId: string, name: string) {
-    return this.storage.updatePlaylist(playlistId, name);
+  updatePlaylist(playlistId: string, name: string, user: CurrentUser) {
+    return this.storage.updatePlaylist(playlistId, name, getUserCommuneScope(user));
   }
 
-  deletePlaylist(playlistId: string) {
-    return this.storage.deletePlaylist(playlistId);
+  deletePlaylist(playlistId: string, user: CurrentUser) {
+    return this.storage.deletePlaylist(playlistId, getUserCommuneScope(user));
   }
 
-  addItem(playlistId: string, fileId: string) {
+  async addItem(playlistId: string, fileId: string, user: CurrentUser) {
+    const communeId = getUserCommuneScope(user);
+    const [playlist, file] = await Promise.all([
+      this.storage.getPlaylist(playlistId, communeId),
+      this.storage.getFile(fileId, communeId),
+    ]);
+    if (!playlist) throw new NotFoundException('Khong tim thay danh sach phat.');
+    if (!file) throw new NotFoundException('Khong tim thay file.');
     return this.storage.addPlaylistItem(playlistId, fileId);
   }
 

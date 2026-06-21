@@ -12,6 +12,7 @@ export type PlaylistItemRecord = {
 export type PlaylistRecord = {
   playlistId: string;
   name: string;
+  communeId: string | null;
   createdAt: string;
   updatedAt: string;
   totalFiles: number;

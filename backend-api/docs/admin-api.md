@@ -156,9 +156,39 @@ Response:
 {
   "authenticated": true,
   "username": "admin",
+  "displayName": "System Admin",
+  "role": "SYSTEM_ADMIN",
+  "communeId": null,
+  "communeName": null,
   "expiresAt": "2026-06-06T03:00:00.000Z"
 }
 ```
+
+## System admin
+
+Tat ca endpoint phan nay can cookie admin va role `SYSTEM_ADMIN`.
+
+```http
+GET  /api/communes
+POST /api/communes
+PUT  /api/communes/:communeId
+GET  /api/users
+POST /api/users
+PUT  /api/users/:userId
+POST /api/users/:userId/reset-password
+POST /api/devices/:deviceId/provisioning-token
+```
+
+Roles v1:
+
+- `SYSTEM_ADMIN`: quan ly tat ca xa, user, thiet bi, du lieu van hanh.
+- `COMMUNE_USER`: chi thay va thao tac du lieu thuoc `communeId` cua user.
+
+Device provisioning:
+
+- Admin he thong tao thiet bi va goi `POST /api/devices/:deviceId/provisioning-token`.
+- Backend tra `provisioningToken` mot lan va `expiresAt`.
+- Android dung token nay de register, sau do tiep tuc dung `deviceToken`.
 
 ## Audio files
 

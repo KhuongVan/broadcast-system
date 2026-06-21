@@ -30,9 +30,20 @@ create table if not exists emergency_broadcast_sessions (
   ended_at            timestamptz,
   status              text not null default 'ACTIVE'
                         check (status in ('ACTIVE', 'FINISHED', 'CANCELLED')),
+  commune_id          uuid references communes(commune_id) on delete restrict,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
+
+alter table emergency_broadcast_sessions
+add column if not exists commune_id uuid references communes(commune_id) on delete restrict;
+
+update emergency_broadcast_sessions
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
+
+create index if not exists idx_emergency_broadcast_sessions_commune_id
+on emergency_broadcast_sessions(commune_id);
 
 create index if not exists idx_emergency_broadcast_sessions_status
 on emergency_broadcast_sessions(status);

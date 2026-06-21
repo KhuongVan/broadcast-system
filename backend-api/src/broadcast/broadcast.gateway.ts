@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { AudioFilesService } from '../audio-files/audio-files.service';
 import { AuthService } from '../auth/auth.service';
+import { CurrentUser, isSystemAdmin } from '../auth/auth.types';
 import { config } from '../config';
 import { MediaService, MediaStopInfo } from '../media/media.service';
 import { PlaylistRecord } from '../playlists/playlist.types';
@@ -129,10 +130,14 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   async handleConnection(client: Socket) {
     client.use((packet, next) => {
       const eventName = String(packet[0] || '');
-      if (eventName.startsWith('admin_') && !this.auth.isCookieHeaderAuthenticated(client.handshake.headers.cookie)) {
-        client.emit('admin_error', { message: 'Vui long dang nhap.' });
-        next(new Error('Unauthorized'));
-        return;
+      if (eventName.startsWith('admin_')) {
+        const user = this.auth.getCookieHeaderUser(client.handshake.headers.cookie);
+        if (!user) {
+          client.emit('admin_error', { message: 'Vui long dang nhap.' });
+          next(new Error('Unauthorized'));
+          return;
+        }
+        client.data.currentUser = user;
       }
 
       next();
@@ -175,6 +180,10 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
   @SubscribeMessage('admin_play_cached')
   async handlePlayCached(@MessageBody() payload: PlayCachedPayload, @ConnectedSocket() client: Socket) {
+    if (!isSystemAdmin(this.getSocketUser(client))) {
+      client.emit('admin_error', { message: 'Chỉ admin hệ thống được phát file global.' });
+      return;
+    }
     if (this.hasActiveEmergency()) {
       client.emit('admin_error', { message: 'Đang phát khẩn cấp, không thể phát nội dung khác.' });
       return;
@@ -198,6 +207,10 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
   @SubscribeMessage('admin_play_hls_file')
   async handlePlayHlsFile(@MessageBody() payload: PlayHlsFilePayload, @ConnectedSocket() client: Socket) {
+    if (!isSystemAdmin(this.getSocketUser(client))) {
+      client.emit('admin_error', { message: 'Chỉ admin hệ thống được phát HLS file global.' });
+      return;
+    }
     if (this.hasActiveEmergency()) {
       client.emit('admin_error', { message: 'Đang phát khẩn cấp, không thể phát nội dung khác.' });
       return;
@@ -226,7 +239,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
 
     try {
-      const target = this.normalizeLiveTarget(payload);
+      const target = await this.normalizeLiveTarget(payload, this.getSocketUser(client));
       client.emit('admin_status', { status: 'STARTING', type: 'MIC' });
       this.pauseActivePlaylist();
       this.clearActiveSchedule();
@@ -699,6 +712,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
         playlist: {
           playlistId: schedule.playlistId || schedule.scheduleId,
           name: schedule.name,
+          communeId: schedule.communeId,
           createdAt: schedule.createdAt,
           updatedAt: schedule.updatedAt,
           totalFiles: 1,
@@ -789,7 +803,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     });
   }
 
-  private normalizeLiveTarget(payload: LiveTargetPayload = {}): ActiveLiveTarget {
+  private async normalizeLiveTarget(payload: LiveTargetPayload = {}, user: CurrentUser): Promise<ActiveLiveTarget> {
     const targetType = payload.targetType === 'AREA' ? 'AREA' : 'DEVICE';
     const targetArea = String(payload.targetArea || '').trim();
     const sessionId = String(payload.sessionId || '').trim() || null;
@@ -799,11 +813,28 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
 
     if (targetType === 'AREA') {
       if (!targetArea) throw new Error('Vui lòng chọn địa bàn phát.');
+      if (!isSystemAdmin(user)) {
+        if (!user.communeId) throw new Error('User chưa được gán xã.');
+        const devices = (await this.storage.listDevices(user.communeId)).filter((device) => this.normalizeRoomPart(device.area) === this.normalizeRoomPart(targetArea));
+        if (!devices.length) throw new Error('Không tìm thấy thiết bị trong địa bàn thuộc xã của bạn.');
+        return { targetType: 'DEVICE', targetArea: null, targetDeviceIds: devices.map((device) => device.deviceId), sessionId };
+      }
       return { targetType, targetArea, targetDeviceIds: [], sessionId };
     }
 
     if (!targetDeviceIds.length) throw new Error('Vui lòng chọn thiết bị phát.');
+    if (!isSystemAdmin(user)) {
+      if (!user.communeId) throw new Error('User chưa được gán xã.');
+      const devices = await Promise.all(targetDeviceIds.map((deviceId) => this.storage.getDevice(deviceId, user.communeId)));
+      if (devices.some((device) => !device)) throw new Error('Không tìm thấy thiết bị trong phạm vi xã của bạn.');
+    }
     return { targetType, targetArea: null, targetDeviceIds, sessionId };
+  }
+
+  private getSocketUser(client: Socket): CurrentUser {
+    const user = client.data.currentUser as CurrentUser | undefined;
+    if (!user) throw new Error('Unauthorized');
+    return user;
   }
 
   private emitToLiveTarget(payload: { action: 'START' | 'STOP'; streamVersion?: number; recordingProof?: RecordingProofPayload }) {

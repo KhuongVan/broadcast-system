@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { CurrentUser, getUserCommuneScope } from '../auth/auth.types';
 import { config } from '../config';
 import { StorageService } from '../storage/storage.service';
 import { BroadcastScheduleRecord, ScheduleInput, SchedulePriority, ScheduleRepeatType } from './schedule.types';
@@ -7,33 +8,35 @@ import { BroadcastScheduleRecord, ScheduleInput, SchedulePriority, ScheduleRepea
 export class SchedulesService {
   constructor(private readonly storage: StorageService) {}
 
-  listSchedules() {
-    return this.storage.listSchedules();
+  listSchedules(user?: CurrentUser) {
+    return this.storage.listSchedules(user ? getUserCommuneScope(user) : null);
   }
 
-  async getSchedule(scheduleId: string) {
-    const schedule = await this.storage.getSchedule(scheduleId);
+  async getSchedule(scheduleId: string, user?: CurrentUser) {
+    const schedule = await this.storage.getSchedule(scheduleId, user ? getUserCommuneScope(user) : null);
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
     return schedule;
   }
 
-  async createSchedule(input: ScheduleInput) {
+  async createSchedule(input: ScheduleInput, user?: CurrentUser) {
+    const communeId = user ? getUserCommuneScope(user) : null;
     const schedule = this.normalizeInput(input);
-    await this.ensureNoPriorityConflict(schedule);
-    return this.storage.createSchedule(schedule);
+    await this.ensureNoPriorityConflict(schedule, undefined, communeId);
+    return this.storage.createSchedule(schedule, communeId);
   }
 
-  async updateSchedule(scheduleId: string, input: ScheduleInput) {
-    const current = await this.getSchedule(scheduleId);
+  async updateSchedule(scheduleId: string, input: ScheduleInput, user?: CurrentUser) {
+    const communeId = user ? getUserCommuneScope(user) : null;
+    const current = await this.getSchedule(scheduleId, user);
     const schedule = this.normalizeInput({ ...current, ...input });
-    await this.ensureNoPriorityConflict(schedule, scheduleId);
-    const updated = await this.storage.updateSchedule(scheduleId, schedule);
+    await this.ensureNoPriorityConflict(schedule, scheduleId, communeId);
+    const updated = await this.storage.updateSchedule(scheduleId, schedule, communeId);
     if (!updated) throw new NotFoundException('Khong tim thay lich phat.');
     return updated;
   }
 
-  deleteSchedule(scheduleId: string) {
-    return this.storage.deleteSchedule(scheduleId);
+  deleteSchedule(scheduleId: string, user?: CurrentUser) {
+    return this.storage.deleteSchedule(scheduleId, user ? getUserCommuneScope(user) : null);
   }
 
   logScheduleRun(scheduleId: string, status: 'STARTED' | 'FINISHED' | 'FAILED' | 'SKIPPED', message?: string | null) {
@@ -111,10 +114,10 @@ export class SchedulesService {
     return repeatCount;
   }
 
-  private async ensureNoPriorityConflict(schedule: Required<ScheduleInput>, ignoreScheduleId?: string) {
+  private async ensureNoPriorityConflict(schedule: Required<ScheduleInput>, ignoreScheduleId?: string, communeId?: string | null) {
     if (!schedule.enabled) return;
 
-    const schedules = await this.storage.listSchedules();
+    const schedules = await this.storage.listSchedules(communeId);
     const conflict = schedules.find((existing) => {
       if (!existing.enabled || existing.scheduleId === ignoreScheduleId) return false;
       if (!this.hasRepeatOverlap(existing.repeatType, schedule.repeatType)) return false;
