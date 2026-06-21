@@ -5,6 +5,7 @@ export type ScheduleFileMode = 'PLAYLIST' | 'SINGLE_FILE';
 
 export type BroadcastScheduleRecord = {
   scheduleId: string;
+  scheduleGroupId: string | null;
   name: string;
   sourceType: ScheduleSourceType;
   priority: SchedulePriority;
@@ -23,6 +24,21 @@ export type BroadcastScheduleRecord = {
   updatedAt: string;
 };
 
+export type ScheduleGroupRecord = {
+  scheduleGroupId: string;
+  name: string;
+  enabled: boolean;
+  communeId: string | null;
+  programCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScheduleGroupInput = {
+  name?: string;
+  enabled?: boolean;
+};
+
 export type ScheduleRunLogRecord = {
   runLogId: string;
   scheduleId: string;
@@ -33,6 +49,7 @@ export type ScheduleRunLogRecord = {
 };
 
 export type ScheduleInput = {
+  scheduleGroupId?: string | null;
   name?: string;
   sourceType?: ScheduleSourceType;
   priority?: SchedulePriority;

@@ -1,4 +1,4 @@
-import { BroadcastScheduleRecord } from '../schedules/schedule.types';
+import { BroadcastScheduleRecord, ScheduleGroupRecord } from '../schedules/schedule.types';
 
 export type DeviceConnectionType = 'LAN' | '4G' | 'UNKNOWN';
 export type DeviceSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
@@ -8,13 +8,15 @@ export type DeviceVolumeSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
 export type DeviceScheduleAssignmentRecord = {
   assignmentId: string;
   deviceId: string;
-  scheduleId: string;
+  scheduleId: string | null;
+  scheduleGroupId: string | null;
   syncStatus: DeviceSyncStatus;
   lastSyncedAt: string | null;
   syncMessage: string | null;
   createdAt: string;
   updatedAt: string;
-  schedule: BroadcastScheduleRecord;
+  schedule: BroadcastScheduleRecord | null;
+  scheduleGroup: ScheduleGroupRecord | null;
 };
 
 export type DeviceRecord = {

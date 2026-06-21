@@ -12,6 +12,7 @@ import type {
   DeviceScheduleAssignment,
   RecordingProofSourceType,
   Schedule,
+  ScheduleGroup,
   Session,
 } from '../lib/types';
 import { DataState } from './DataState';
@@ -48,7 +49,7 @@ const emptyDevice: DeviceInput = {
 export function DevicesView({ activeSection, onChangeSection, onStartEmergency, onStartLive, session }: DevicesViewProps) {
   const { showToast } = useToast();
   const [devices, setDevices] = useState<Device[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [scheduleGroups, setScheduleGroups] = useState<ScheduleGroup[]>([]);
   const [communes, setCommunes] = useState<Commune[]>([]);
   const [form, setForm] = useState<DeviceInput>(emptyDevice);
   const [editingId, setEditingId] = useState('');
@@ -73,7 +74,7 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
   const [recordingsError, setRecordingsError] = useState('');
   const [manualRecording, setManualRecording] = useState<DeviceRecordingSession | null>(null);
 
-  const operationSchedules = useMemo(() => schedules, [schedules]);
+  const operationSchedules = useMemo(() => scheduleGroups, [scheduleGroups]);
 
   const filteredDevices = useMemo(() => {
     const keyword = normalizeSearchText(search);
@@ -112,14 +113,14 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
     try {
       const [deviceData, scheduleData, communeData] = await Promise.all([
         adminApi.listDevices(),
-        adminApi.listSchedules(),
+        adminApi.listScheduleGroups(),
         session.role === 'SYSTEM_ADMIN' ? adminApi.listCommunes() : Promise.resolve({ communes: [] }),
       ]);
       setDevices(deviceData.devices);
-      setSchedules(scheduleData.schedules);
+      setScheduleGroups(scheduleData.scheduleGroups);
       setCommunes(communeData.communes);
       setSelectedDeviceIds((current) => new Set([...current].filter((deviceId) => deviceData.devices.some((device) => device.deviceId === deviceId))));
-      setSelectedScheduleId((current) => current || scheduleData.schedules[0]?.scheduleId || '');
+      setSelectedScheduleId((current) => current || scheduleData.scheduleGroups[0]?.scheduleGroupId || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tải được thiết bị.');
     } finally {
@@ -523,17 +524,17 @@ export function DevicesView({ activeSection, onChangeSection, onStartEmergency, 
                   <div className="schedule-list">
                     {operationSchedules.length ? operationSchedules.map((schedule) => (
                       <button
-                        className={selectedScheduleId === schedule.scheduleId ? 'schedule-list-item active' : 'schedule-list-item'}
-                        key={schedule.scheduleId}
-                        onClick={() => setSelectedScheduleId(schedule.scheduleId)}
+                        className={selectedScheduleId === schedule.scheduleGroupId ? 'schedule-list-item active' : 'schedule-list-item'}
+                        key={schedule.scheduleGroupId}
+                        onClick={() => setSelectedScheduleId(schedule.scheduleGroupId)}
                         type="button"
                       >
-                        <input checked={selectedScheduleId === schedule.scheduleId} readOnly type="radio" />
+                        <input checked={selectedScheduleId === schedule.scheduleGroupId} readOnly type="radio" />
                         <span>
                           <strong>{schedule.name}</strong>
-                          <small>{formatScheduleWindow(schedule)}</small>
+                          <small>{schedule.programCount} chương trình</small>
                         </span>
-                        <em>{getScheduleSourceLabel(schedule)}</em>
+                        <em>{schedule.enabled ? 'Đang bật' : 'Đang tắt'}</em>
                       </button>
                     )) : (
                       <div className="state compact">Chưa có lịch phát.</div>
@@ -1086,9 +1087,8 @@ function AssignedSchedulesTable({
           <tr>
             <th>STT</th>
             <th>Tên lịch</th>
-            <th>Thời gian</th>
-            <th>Lặp</th>
-            <th>Nguồn</th>
+            <th>Chương trình</th>
+            <th>Trạng thái</th>
             <th>Đồng bộ</th>
             <th>Thao tác</th>
           </tr>
@@ -1098,16 +1098,12 @@ function AssignedSchedulesTable({
             <tr key={assignment.assignmentId}>
               <td>{index + 1}</td>
               <td>
-                <strong>{assignment.schedule.name}</strong>
+                <strong>{assignment.scheduleGroup?.name || assignment.schedule?.name || 'Lịch phát'}</strong>
               </td>
-              <td>{formatScheduleWindow(assignment.schedule)}</td>
               <td>
-                {repeatLabel(assignment.schedule.repeatType)}
-                {assignment.schedule.sourceType === 'FILE' && assignment.schedule.repeatCount > 0 ? (
-                  <div className="subtext">Phát lại {assignment.schedule.repeatCount} lần</div>
-                ) : null}
+                {assignment.scheduleGroup ? `${assignment.scheduleGroup.programCount} chương trình` : assignment.schedule ? formatScheduleWindow(assignment.schedule) : 'Không có'}
               </td>
-              <td>{getScheduleSourceLabel(assignment.schedule)}</td>
+              <td>{assignment.scheduleGroup?.enabled ?? assignment.schedule?.enabled ? 'Đang bật' : 'Đang tắt'}</td>
               <td>
                 <StatusBadge tone={assignment.syncStatus === 'FAILED' ? 'danger' : assignment.syncStatus === 'SYNCED' ? 'ok' : 'warn'}>
                   {getSyncStatusLabel(assignment.syncStatus)}
@@ -1116,7 +1112,7 @@ function AssignedSchedulesTable({
                 {assignment.syncMessage ? <div className="subtext">{formatDeviceMessage(assignment.syncMessage)}</div> : null}
               </td>
               <td>
-                <button className="danger" disabled={saving} onClick={() => onRemove(assignment.scheduleId)} type="button">
+                <button className="danger" disabled={saving} onClick={() => onRemove(assignment.scheduleGroupId || assignment.scheduleId || '')} type="button">
                   Gỡ
                 </button>
               </td>
@@ -1142,7 +1138,7 @@ function getDeviceSearchValues(device: Device) {
     device.networkType,
     device.online ? 'Kết nối Đã kết nối' : 'Mất kết nối',
     getPlayStatusLabel(device),
-    ...getDeviceScheduleAssignments(device).map((assignment) => assignment.schedule.name),
+    ...getDeviceScheduleAssignments(device).map((assignment) => assignment.scheduleGroup?.name || assignment.schedule?.name || ''),
     device.currentSchedule?.name,
   ];
 }

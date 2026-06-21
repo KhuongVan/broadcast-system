@@ -32,6 +32,7 @@ export type DeviceClientPlaybackStateBody = {
 
 export type DeviceClientSyncResultBody = {
   scheduleId?: string;
+  scheduleGroupId?: string;
   syncStatus?: 'SYNCED' | 'FAILED';
   syncMessage?: string;
 };

@@ -81,8 +81,24 @@ on playlist_items(playlist_id);
 create unique index if not exists idx_playlist_items_unique_order
 on playlist_items(playlist_id, sort_order);
 
+create table if not exists broadcast_schedule_groups (
+  schedule_group_id uuid primary key default gen_random_uuid(),
+  name text not null,
+  enabled boolean not null default true,
+  commune_id uuid references communes(commune_id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_broadcast_schedule_groups_commune_id
+on broadcast_schedule_groups(commune_id);
+
+create index if not exists idx_broadcast_schedule_groups_enabled
+on broadcast_schedule_groups(enabled);
+
 create table if not exists broadcast_schedules (
   schedule_id uuid primary key default gen_random_uuid(),
+  schedule_group_id uuid references broadcast_schedule_groups(schedule_group_id) on delete cascade,
   name text not null,
   source_type text not null check (source_type in ('FILE', 'RTSP')),
   priority text not null default 'NORMAL' check (priority in ('NORMAL', 'EMERGENCY')),
@@ -106,6 +122,25 @@ create table if not exists broadcast_schedules (
     (source_type = 'RTSP' and rtsp_url is not null)
   )
 );
+
+alter table broadcast_schedules
+add column if not exists schedule_group_id uuid references broadcast_schedule_groups(schedule_group_id) on delete cascade;
+
+insert into broadcast_schedule_groups (schedule_group_id, name, enabled, commune_id, created_at, updated_at)
+select schedule_id, name, enabled, commune_id, created_at, updated_at
+from broadcast_schedules
+where schedule_group_id is null
+on conflict (schedule_group_id) do nothing;
+
+update broadcast_schedules
+set schedule_group_id = schedule_id
+where schedule_group_id is null;
+
+alter table broadcast_schedules
+alter column schedule_group_id set not null;
+
+create index if not exists idx_broadcast_schedules_group_id
+on broadcast_schedules(schedule_group_id);
 
 create index if not exists idx_broadcast_schedules_enabled
 on broadcast_schedules(enabled);
@@ -536,6 +571,7 @@ where deleted_at is null;
 create table if not exists device_schedule_assignments (
   assignment_id uuid primary key default gen_random_uuid(),
   device_id uuid not null references devices(device_id) on delete cascade,
+  schedule_group_id uuid references broadcast_schedule_groups(schedule_group_id) on delete cascade,
   schedule_id uuid not null references broadcast_schedules(schedule_id) on delete cascade,
   sync_status text not null default 'PENDING' check (sync_status in ('PENDING', 'SYNCED', 'FAILED')),
   last_synced_at timestamptz,
@@ -545,12 +581,33 @@ create table if not exists device_schedule_assignments (
 );
 
 alter table device_schedule_assignments
+add column if not exists schedule_group_id uuid references broadcast_schedule_groups(schedule_group_id) on delete cascade;
+
+alter table device_schedule_assignments
+alter column schedule_id drop not null;
+
+update device_schedule_assignments dsa
+set schedule_group_id = bs.schedule_group_id
+from broadcast_schedules bs
+where dsa.schedule_group_id is null
+  and dsa.schedule_id = bs.schedule_id;
+
+alter table device_schedule_assignments
 drop constraint if exists device_schedule_assignments_device_unique;
 
 drop index if exists device_schedule_assignments_device_unique;
 
+drop index if exists idx_device_schedule_assignments_device_schedule_unique;
+
 create unique index if not exists idx_device_schedule_assignments_device_schedule_unique
 on device_schedule_assignments(device_id, schedule_id);
+
+create unique index if not exists idx_device_schedule_assignments_device_group_unique
+on device_schedule_assignments(device_id, schedule_group_id)
+where schedule_group_id is not null;
+
+create index if not exists idx_device_schedule_assignments_group_id
+on device_schedule_assignments(schedule_group_id);
 
 create index if not exists idx_device_schedule_assignments_schedule_id
 on device_schedule_assignments(schedule_id);
@@ -562,8 +619,15 @@ values
   ('33333333-3333-3333-3333-333333333333', 'Loa Thôn 9', '22:22:9A:47:10:B8', 'Thôn 9', '4G', false, now() - interval '45 minutes', false, 'STOPPED', 10.9488, 106.6127)
 on conflict (device_id) do nothing;
 
+insert into broadcast_schedule_groups (schedule_group_id, name, enabled)
+values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Tiếp sóng bản tin xã buổi sáng', true),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Tiếp sóng thông báo huyện', true)
+on conflict (schedule_group_id) do nothing;
+
 insert into broadcast_schedules (
   schedule_id,
+  schedule_group_id,
   name,
   source_type,
   priority,
@@ -581,6 +645,7 @@ insert into broadcast_schedules (
 values
   (
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     'Tiếp sóng bản tin xã buổi sáng',
     'RTSP',
     'NORMAL',
@@ -596,6 +661,7 @@ values
     true
   ),
   (
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     'Tiếp sóng thông báo huyện',
     'RTSP',
@@ -613,11 +679,11 @@ values
   )
 on conflict (schedule_id) do nothing;
 
-insert into device_schedule_assignments (device_id, schedule_id, sync_status, last_synced_at, sync_message)
+insert into device_schedule_assignments (device_id, schedule_group_id, schedule_id, sync_status, last_synced_at, sync_message)
 values
-  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'SYNCED', now() - interval '1 hour', 'Da tai lich xuong thiet bi demo.'),
-  ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'FAILED', null, 'Thiet bi dang mat ket noi.')
-on conflict (device_id, schedule_id) do nothing;
+  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', null, 'SYNCED', now() - interval '1 hour', 'Da tai lich xuong thiet bi demo.'),
+  ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', null, 'FAILED', null, 'Thiet bi dang mat ket noi.')
+on conflict (device_id, schedule_group_id) do nothing;
 
 alter table devices
 add column if not exists sim_number text;

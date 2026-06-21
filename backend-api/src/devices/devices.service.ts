@@ -97,13 +97,24 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
   async playNow(deviceId: string, scheduleId: string, user: CurrentUser) {
     const device = await this.getDevice(deviceId, user);
-    const schedule = await this.storage.getSchedule(scheduleId, getUserCommuneScope(user));
+    const communeId = getUserCommuneScope(user);
+    const group = await this.storage.getScheduleGroup(scheduleId, communeId);
+    const schedule = group
+      ? this.pickScheduleForPlayNow(await this.storage.listSchedules(communeId, { scheduleGroupId: group.scheduleGroupId }))
+      : await this.storage.getSchedule(scheduleId, communeId);
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
     await this.ensureScheduleDoesNotConflict(device.deviceId, schedule);
-    await this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
-      syncStatus: device.online ? 'SYNCED' : 'FAILED',
-      syncMessage: device.online ? 'Da gan lich cho thiet bi de phat ngay.' : 'Da gan lich, thiet bi se nhan lenh khi ket noi lai.',
-    });
+    if (group) {
+      await this.storage.syncDeviceScheduleGroup(device.deviceId, group.scheduleGroupId, {
+        syncStatus: device.online ? 'SYNCED' : 'FAILED',
+        syncMessage: device.online ? 'Da gan lich cho thiet bi de phat ngay.' : 'Da gan lich, thiet bi se nhan lenh khi ket noi lai.',
+      });
+    } else {
+      await this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
+        syncStatus: device.online ? 'SYNCED' : 'FAILED',
+        syncMessage: device.online ? 'Da gan lich cho thiet bi de phat ngay.' : 'Da gan lich, thiet bi se nhan lenh khi ket noi lai.',
+      });
+    }
     await this.storage.updateDevicePlayAllowed(device.deviceId, true);
     await this.storage.createDevicePlaybackCommand(device.deviceId, 'PLAY_SCHEDULE', {
       scheduleId: schedule.scheduleId,
@@ -137,21 +148,36 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async syncScheduleToDevice(deviceId: string, scheduleId: string, user: CurrentUser) {
+  async syncScheduleToDevice(deviceId: string, scheduleOrGroupId: string, user: CurrentUser) {
     const device = await this.getDevice(deviceId, user);
-    const schedule = await this.storage.getSchedule(scheduleId, getUserCommuneScope(user));
+    const communeId = getUserCommuneScope(user);
+    const group = await this.storage.getScheduleGroup(scheduleOrGroupId, communeId);
+    if (group) {
+      const programs = await this.storage.listSchedules(communeId, { scheduleGroupId: group.scheduleGroupId });
+      if (!programs.length) throw new NotFoundException('Lich phat chua co chuong trinh.');
+      await this.ensureScheduleGroupDoesNotConflict(device.deviceId, programs);
+      return this.storage.syncDeviceScheduleGroup(device.deviceId, group.scheduleGroupId, {
+        syncStatus: device.online ? 'SYNCED' : 'FAILED',
+        syncMessage: device.online ? 'Da gan lich cho thiet bi.' : 'Thiet bi dang mat ket noi.',
+      });
+    }
+
+    const schedule = await this.storage.getSchedule(scheduleOrGroupId, communeId);
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
     await this.ensureScheduleDoesNotConflict(device.deviceId, schedule);
-
     return this.storage.syncDeviceSchedule(device.deviceId, schedule.scheduleId, {
       syncStatus: device.online ? 'SYNCED' : 'FAILED',
       syncMessage: device.online ? 'Da gan lich cho thiet bi.' : 'Thiet bi dang mat ket noi.',
     });
   }
 
-  async removeScheduleFromDevice(deviceId: string, scheduleId: string, user: CurrentUser) {
+  async removeScheduleFromDevice(deviceId: string, scheduleOrGroupId: string, user: CurrentUser) {
     await this.getDevice(deviceId, user);
-    const schedule = await this.storage.getSchedule(scheduleId, getUserCommuneScope(user));
+    const communeId = getUserCommuneScope(user);
+    const group = await this.storage.getScheduleGroup(scheduleOrGroupId, communeId);
+    if (group) return this.storage.removeDeviceScheduleGroup(deviceId, group.scheduleGroupId);
+
+    const schedule = await this.storage.getSchedule(scheduleOrGroupId, communeId);
     if (!schedule) throw new NotFoundException('Khong tim thay lich phat.');
     return this.storage.removeDeviceSchedule(deviceId, schedule.scheduleId);
   }
@@ -167,16 +193,59 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   private async ensureScheduleDoesNotConflict(deviceId: string, schedule: BroadcastScheduleRecord) {
     if (!schedule.enabled) return;
     const assignments = await this.storage.listDeviceScheduleAssignments(deviceId);
-    const conflict = assignments
-      .map((assignment) => assignment.schedule)
-      .find((assignedSchedule) =>
+    const assignedSchedules: BroadcastScheduleRecord[] = [];
+    for (const assignment of assignments) {
+      if (assignment.scheduleGroupId) {
+        assignedSchedules.push(...await this.storage.listSchedules(null, { scheduleGroupId: assignment.scheduleGroupId }));
+      } else if (assignment.schedule) {
+        assignedSchedules.push(assignment.schedule);
+      }
+    }
+    const conflict = assignedSchedules.find((assignedSchedule) =>
         assignedSchedule.scheduleId !== schedule.scheduleId &&
         assignedSchedule.enabled &&
         this.schedulesConflict(schedule, assignedSchedule),
-      );
+    );
 
     if (conflict) {
       throw new ConflictException(`Lịch "${schedule.name}" bị trùng thời gian với "${conflict.name}" trên thiết bị này.`);
+    }
+  }
+
+  private pickScheduleForPlayNow(schedules: BroadcastScheduleRecord[]) {
+    const enabled = schedules.filter((schedule) => schedule.enabled);
+    return enabled.find((schedule) => this.isScheduleActiveNow(schedule)) || enabled[0] || schedules[0] || null;
+  }
+
+  private isScheduleActiveNow(schedule: BroadcastScheduleRecord) {
+    const now = new Date();
+    const date = now.toLocaleDateString('en-CA', { timeZone: config.timeZone });
+    const time = now.toLocaleTimeString('en-GB', { timeZone: config.timeZone, hour: '2-digit', minute: '2-digit', hour12: false });
+    if (date < schedule.startDate) return false;
+    if (time < schedule.startTime || time >= schedule.endTime) return false;
+    if (schedule.repeatType === 'ONCE') return date === schedule.startDate;
+    if (schedule.repeatType === 'DAILY') return true;
+    if (schedule.repeatType === 'WEEKLY') return this.getWeekday(date) === this.getWeekday(schedule.startDate);
+    if (schedule.repeatType === 'MONTHLY') return this.getMonthDay(date) === this.getMonthDay(schedule.startDate);
+    return false;
+  }
+
+  private async ensureScheduleGroupDoesNotConflict(deviceId: string, schedules: BroadcastScheduleRecord[]) {
+    for (const schedule of schedules) {
+      await this.ensureScheduleDoesNotConflict(deviceId, schedule);
+    }
+
+    const selfConflict = schedules.find((schedule, index) =>
+      schedules.some((other, otherIndex) =>
+        otherIndex > index &&
+        schedule.scheduleId !== other.scheduleId &&
+        schedule.enabled &&
+        other.enabled &&
+        this.schedulesConflict(schedule, other),
+      ),
+    );
+    if (selfConflict) {
+      throw new ConflictException(`Lịch này có chương trình bị trùng thời gian: "${selfConflict.name}".`);
     }
   }
 

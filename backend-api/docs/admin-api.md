@@ -58,6 +58,15 @@ POST   /api/schedules/test-rtsp
 GET    /api/schedules/:scheduleId
 PUT    /api/schedules/:scheduleId
 DELETE /api/schedules/:scheduleId
+GET    /api/schedule-groups
+POST   /api/schedule-groups
+GET    /api/schedule-groups/:scheduleGroupId
+PUT    /api/schedule-groups/:scheduleGroupId
+DELETE /api/schedule-groups/:scheduleGroupId
+GET    /api/schedule-groups/:scheduleGroupId/programs
+POST   /api/schedule-groups/:scheduleGroupId/programs
+PUT    /api/schedule-groups/:scheduleGroupId/programs/:scheduleId
+DELETE /api/schedule-groups/:scheduleGroupId/programs/:scheduleId
 ```
 
 ### Devices
@@ -442,6 +451,52 @@ Allowed values:
 - `fileMode`: `PLAYLIST | SINGLE_FILE`
 - `repeatType`: `ONCE | DAILY | WEEKLY | MONTHLY`
 - `repeatCount`: integer `0..30`, chỉ áp dụng cho `sourceType = FILE`. `0` nghĩa là không phát lại thêm; RTSP/HLS luôn lưu `0`.
+
+### Schedule groups
+
+`schedule-groups` là lịch phát cha. Mỗi lịch phát chứa nhiều chương trình phát trong `broadcast_schedules`.
+
+```http
+GET /api/schedule-groups
+POST /api/schedule-groups
+GET /api/schedule-groups/:scheduleGroupId
+PUT /api/schedule-groups/:scheduleGroupId
+DELETE /api/schedule-groups/:scheduleGroupId
+```
+
+Schedule group input:
+
+```json
+{
+  "name": "Lịch phát tuần",
+  "enabled": true
+}
+```
+
+Response item:
+
+```json
+{
+  "scheduleGroupId": "uuid",
+  "name": "Lịch phát tuần",
+  "enabled": true,
+  "programCount": 3,
+  "communeId": "uuid",
+  "createdAt": "2026-06-21T10:00:00.000Z",
+  "updatedAt": "2026-06-21T10:00:00.000Z"
+}
+```
+
+### Programs in a schedule group
+
+Các endpoint này quản lý chương trình phát bên trong một lịch phát cha. Request body dùng cùng schedule input hiện có; backend tự gắn `scheduleGroupId`.
+
+```http
+GET /api/schedule-groups/:scheduleGroupId/programs
+POST /api/schedule-groups/:scheduleGroupId/programs
+PUT /api/schedule-groups/:scheduleGroupId/programs/:scheduleId
+DELETE /api/schedule-groups/:scheduleGroupId/programs/:scheduleId
+```
 
 ### List schedules
 
@@ -865,16 +920,17 @@ Request:
 
 ```json
 {
-  "scheduleId": "uuid"
+  "scheduleGroupId": "uuid"
 }
 ```
 
 Notes:
 
-- Endpoint nay gan lich cho dung thiet bi trong `device_schedule_assignments`.
-- Mot thiet bi co the duoc gan nhieu lich; backend khong tao trung cap `(deviceId, scheduleId)`.
-- Backend chan gan lich `enabled=true` neu bi trung khung gio voi lich dang bat da gan cho thiet bi.
-- Lich phat tu dong chi phat den cac thiet bi da duoc gan lich bang endpoint nay va dang `playAllowed=true`.
+- Endpoint nay gan lịch phát cha cho đúng thiết bị trong `device_schedule_assignments`.
+- Body cũ `{ "scheduleId": "uuid" }` vẫn được hỗ trợ cho dữ liệu/luồng cũ.
+- Một thiết bị có thể được gán nhiều lịch phát; backend không tạo trùng cặp `(deviceId, scheduleGroupId)`.
+- Backend chặn gán nếu bất kỳ chương trình đang bật trong lịch bị trùng khung giờ với chương trình đang bật đã gán cho thiết bị.
+- Lịch phát tự động chỉ phát đến các thiết bị đã được gán lịch bằng endpoint này và đang `playAllowed=true`.
 - Lich den gio nhung chua gan cho thiet bi nao se khong phat va duoc ghi log `SKIPPED`.
 - Response tra `{ device }`.
 

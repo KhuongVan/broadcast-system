@@ -66,6 +66,7 @@ export type ScheduleFileMode = 'PLAYLIST' | 'SINGLE_FILE';
 
 export type Schedule = {
   scheduleId: string;
+  scheduleGroupId: string | null;
   name: string;
   sourceType: ScheduleSourceType;
   priority: SchedulePriority;
@@ -83,7 +84,23 @@ export type Schedule = {
   updatedAt: string;
 };
 
+export type ScheduleGroup = {
+  scheduleGroupId: string;
+  name: string;
+  enabled: boolean;
+  communeId: string | null;
+  programCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScheduleGroupInput = {
+  name: string;
+  enabled: boolean;
+};
+
 export type ScheduleInput = {
+  scheduleGroupId?: string | null;
   name: string;
   sourceType: ScheduleSourceType;
   priority: SchedulePriority;
@@ -154,13 +171,15 @@ export type Device = {
 export type DeviceScheduleAssignment = {
   assignmentId: string;
   deviceId: string;
-  scheduleId: string;
+  scheduleId: string | null;
+  scheduleGroupId: string | null;
   syncStatus: 'PENDING' | 'SYNCED' | 'FAILED';
   lastSyncedAt: string | null;
   syncMessage: string | null;
   createdAt: string;
   updatedAt: string;
-  schedule: Schedule;
+  schedule: Schedule | null;
+  scheduleGroup: ScheduleGroup | null;
 };
 
 export type DeviceRecordingStatus = 'REQUESTED' | 'RECORDING' | 'STOP_REQUESTED' | 'UPLOADING' | 'COMPLETED' | 'FAILED' | 'EXPIRED';

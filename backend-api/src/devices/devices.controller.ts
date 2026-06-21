@@ -91,7 +91,7 @@ export class DevicesController {
   }
 
   @Post('/api/devices/:deviceId/sync-schedule')
-  async syncSchedule(@Param('deviceId') deviceId: string, @Body() body: { scheduleId?: string }, @CurrentUser() user: CurrentUserType) {
-    return { device: await this.devices.syncScheduleToDevice(deviceId, body.scheduleId || '', user) };
+  async syncSchedule(@Param('deviceId') deviceId: string, @Body() body: { scheduleId?: string; scheduleGroupId?: string }, @CurrentUser() user: CurrentUserType) {
+    return { device: await this.devices.syncScheduleToDevice(deviceId, body.scheduleGroupId || body.scheduleId || '', user) };
   }
 }

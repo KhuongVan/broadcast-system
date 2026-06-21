@@ -251,7 +251,8 @@ Response khi co nhieu lich:
   "assignments": [
     {
       "assignmentId": "aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa",
-      "scheduleId": "33333333-3333-3333-3333-333333333333",
+      "scheduleId": null,
+      "scheduleGroupId": "99999999-9999-9999-9999-999999999999",
       "syncStatus": "SYNCED",
       "lastSyncedAt": "2026-06-05T03:00:00.000Z",
       "syncMessage": "Downloaded schedule"
@@ -260,6 +261,7 @@ Response khi co nhieu lich:
   "schedules": [
     {
       "scheduleId": "33333333-3333-3333-3333-333333333333",
+      "scheduleGroupId": "99999999-9999-9999-9999-999999999999",
       "name": "Tiếp sóng URL",
       "sourceType": "RTSP",
       "priority": "NORMAL",
@@ -286,7 +288,8 @@ Response khi co nhieu lich:
 
 Notes:
 
-- Backend chi tra cac lich da duoc admin gan cho thiet bi qua `POST /api/devices/:deviceId/sync-schedule`.
+- Backend trả các chương trình thuộc lịch phát cha đã được admin gán cho thiết bị qua `POST /api/devices/:deviceId/sync-schedule`.
+- `assignments[].scheduleGroupId` là lịch phát cha đã gán; `schedules[]` vẫn là danh sách chương trình phẳng để app Android tiếp tục xử lý theo `scheduleId`.
 - Lich phat tu dong tren Socket.IO cung chi phat den cac thiet bi co assignment va dang `playAllowed=true`; lich chua gan thiet bi se bi bo qua.
 - Voi `sourceType=RTSP`, app dung `schedule.rtspUrl`.
 - Voi `sourceType=FILE` va `fileMode=PLAYLIST`, app lay playlist tai `playlistsByScheduleId[scheduleId]`.

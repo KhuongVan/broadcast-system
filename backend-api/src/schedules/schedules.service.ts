@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { CurrentUser, getUserCommuneScope } from '../auth/auth.types';
 import { config } from '../config';
 import { StorageService } from '../storage/storage.service';
-import { BroadcastScheduleRecord, ScheduleInput, SchedulePriority, ScheduleRepeatType } from './schedule.types';
+import { BroadcastScheduleRecord, ScheduleGroupInput, ScheduleInput, SchedulePriority, ScheduleRepeatType } from './schedule.types';
 
 @Injectable()
 export class SchedulesService {
@@ -10,6 +10,43 @@ export class SchedulesService {
 
   listSchedules(user?: CurrentUser) {
     return this.storage.listSchedules(user ? getUserCommuneScope(user) : null);
+  }
+
+  listRunnableSchedules() {
+    return this.storage.listSchedules(null, { onlyRunnableGroups: true });
+  }
+
+  listScheduleGroups(user?: CurrentUser) {
+    return this.storage.listScheduleGroups(user ? getUserCommuneScope(user) : null);
+  }
+
+  async getScheduleGroup(scheduleGroupId: string, user?: CurrentUser) {
+    const group = await this.storage.getScheduleGroup(scheduleGroupId, user ? getUserCommuneScope(user) : null);
+    if (!group) throw new NotFoundException('Khong tim thay lich phat.');
+    return group;
+  }
+
+  createScheduleGroup(input: ScheduleGroupInput, user?: CurrentUser) {
+    const group = this.normalizeGroupInput(input);
+    return this.storage.createScheduleGroup(group, user ? getUserCommuneScope(user) : null);
+  }
+
+  async updateScheduleGroup(scheduleGroupId: string, input: ScheduleGroupInput, user?: CurrentUser) {
+    const current = await this.getScheduleGroup(scheduleGroupId, user);
+    const group = this.normalizeGroupInput({ ...current, ...input });
+    const updated = await this.storage.updateScheduleGroup(scheduleGroupId, group, user ? getUserCommuneScope(user) : null);
+    if (!updated) throw new NotFoundException('Khong tim thay lich phat.');
+    return updated;
+  }
+
+  async deleteScheduleGroup(scheduleGroupId: string, user?: CurrentUser) {
+    await this.getScheduleGroup(scheduleGroupId, user);
+    return this.storage.deleteScheduleGroup(scheduleGroupId, user ? getUserCommuneScope(user) : null);
+  }
+
+  async listPrograms(scheduleGroupId: string, user?: CurrentUser) {
+    await this.getScheduleGroup(scheduleGroupId, user);
+    return this.storage.listSchedules(user ? getUserCommuneScope(user) : null, { scheduleGroupId });
   }
 
   async getSchedule(scheduleId: string, user?: CurrentUser) {
@@ -20,15 +57,30 @@ export class SchedulesService {
 
   async createSchedule(input: ScheduleInput, user?: CurrentUser) {
     const communeId = user ? getUserCommuneScope(user) : null;
-    const schedule = this.normalizeInput(input);
+    let scheduleGroupId = input.scheduleGroupId || null;
+    if (scheduleGroupId) {
+      await this.getScheduleGroup(scheduleGroupId, user);
+    } else {
+      const group = await this.storage.createScheduleGroup(this.normalizeGroupInput({ name: input.name || 'Lịch phát mới', enabled: input.enabled }), communeId);
+      scheduleGroupId = group.scheduleGroupId;
+    }
+    const schedule = this.normalizeInput({ ...input, scheduleGroupId });
     await this.ensureNoPriorityConflict(schedule, undefined, communeId);
     return this.storage.createSchedule(schedule, communeId);
+  }
+
+  async createProgram(scheduleGroupId: string, input: ScheduleInput, user?: CurrentUser) {
+    await this.getScheduleGroup(scheduleGroupId, user);
+    return this.createSchedule({ ...input, scheduleGroupId }, user);
   }
 
   async updateSchedule(scheduleId: string, input: ScheduleInput, user?: CurrentUser) {
     const communeId = user ? getUserCommuneScope(user) : null;
     const current = await this.getSchedule(scheduleId, user);
-    const schedule = this.normalizeInput({ ...current, ...input });
+    const scheduleGroupId = input.scheduleGroupId === undefined ? current.scheduleGroupId : input.scheduleGroupId;
+    if (!scheduleGroupId) throw new NotFoundException('Khong tim thay lich phat.');
+    await this.getScheduleGroup(scheduleGroupId, user);
+    const schedule = this.normalizeInput({ ...current, ...input, scheduleGroupId });
     await this.ensureNoPriorityConflict(schedule, scheduleId, communeId);
     const updated = await this.storage.updateSchedule(scheduleId, schedule, communeId);
     if (!updated) throw new NotFoundException('Khong tim thay lich phat.');
@@ -37,6 +89,13 @@ export class SchedulesService {
 
   deleteSchedule(scheduleId: string, user?: CurrentUser) {
     return this.storage.deleteSchedule(scheduleId, user ? getUserCommuneScope(user) : null);
+  }
+
+  async deleteProgram(scheduleGroupId: string, scheduleId: string, user?: CurrentUser) {
+    await this.getScheduleGroup(scheduleGroupId, user);
+    const schedule = await this.getSchedule(scheduleId, user);
+    if (schedule.scheduleGroupId !== scheduleGroupId) throw new NotFoundException('Khong tim thay chuong trinh phat.');
+    return this.deleteSchedule(scheduleId, user);
   }
 
   logScheduleRun(scheduleId: string, status: 'STARTED' | 'FINISHED' | 'FAILED' | 'SKIPPED', message?: string | null) {
@@ -57,7 +116,17 @@ export class SchedulesService {
     return nowMinutes >= startMinutes && nowMinutes < endMinutes;
   }
 
+  private normalizeGroupInput(input: ScheduleGroupInput): Required<ScheduleGroupInput> {
+    const name = (input.name || 'Lịch phát mới').trim();
+    if (!name) throw new BadRequestException('Vui lòng nhập tên lịch phát.');
+    return {
+      name,
+      enabled: input.enabled !== false,
+    };
+  }
+
   private normalizeInput(input: ScheduleInput): Required<ScheduleInput> {
+    const scheduleGroupId = input.scheduleGroupId || null;
     const sourceType = input.sourceType || 'FILE';
     const priority = input.priority || 'NORMAL';
     const repeatType = input.repeatType || 'ONCE';
@@ -90,6 +159,7 @@ export class SchedulesService {
     }
 
     return {
+      scheduleGroupId,
       name,
       sourceType,
       priority,

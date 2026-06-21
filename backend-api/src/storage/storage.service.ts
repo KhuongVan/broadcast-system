@@ -18,7 +18,7 @@ import { EmergencyBroadcastRecord, EmergencyBroadcastStatus, EmergencyBroadcastS
 import { EmergencySourceInput, EmergencySourceRecord } from '../emergency-sources/emergency-source.types';
 import { LiveBroadcastCreateInput, LiveBroadcastRecord, LiveBroadcastStatus } from '../live-broadcasts/live-broadcast.types';
 import { PlaylistItemRecord, PlaylistRecord } from '../playlists/playlist.types';
-import { BroadcastScheduleRecord, ScheduleInput, ScheduleRunLogRecord } from '../schedules/schedule.types';
+import { BroadcastScheduleRecord, ScheduleGroupInput, ScheduleGroupRecord, ScheduleInput, ScheduleRunLogRecord } from '../schedules/schedule.types';
 
 export type CommuneRecord = {
   communeId: string;
@@ -94,6 +94,7 @@ type PlaylistItemRow = {
 
 type BroadcastScheduleRow = {
   schedule_id: string;
+  schedule_group_id: string | null;
   name: string;
   source_type: 'FILE' | 'RTSP';
   priority: 'NORMAL' | 'EMERGENCY';
@@ -106,6 +107,15 @@ type BroadcastScheduleRow = {
   end_time: string;
   repeat_type: 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
   repeat_count: number | null;
+  enabled: boolean;
+  commune_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type BroadcastScheduleGroupRow = {
+  schedule_group_id: string;
+  name: string;
   enabled: boolean;
   commune_id: string | null;
   created_at: string;
@@ -199,7 +209,8 @@ export type DeviceCommandRecord = {
 type DeviceScheduleAssignmentRow = {
   assignment_id: string;
   device_id: string;
-  schedule_id: string;
+  schedule_id: string | null;
+  schedule_group_id: string | null;
   sync_status: DeviceSyncStatus;
   last_synced_at: string | null;
   sync_message: string | null;
@@ -310,7 +321,8 @@ type EmergencyBroadcastSessionRow = {
 export type DeviceClientSchedulePayload = {
   assignments: Array<{
     assignmentId: string;
-    scheduleId: string;
+    scheduleId: string | null;
+    scheduleGroupId: string | null;
     syncStatus: DeviceSyncStatus;
     lastSyncedAt: string | null;
     syncMessage: string | null;
@@ -1372,7 +1384,87 @@ export class StorageService {
     }
   }
 
-  async listSchedules(communeId?: string | null) {
+  async listScheduleGroups(communeId?: string | null) {
+    let query = this.supabase
+      .from('broadcast_schedule_groups')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query;
+
+    if (error) {
+      throw new Error(`Khong doc duoc broadcast_schedule_groups: ${error.message}`);
+    }
+
+    const groups = (data || []) as BroadcastScheduleGroupRow[];
+    return Promise.all(groups.map((row) => this.toScheduleGroupRecord(row)));
+  }
+
+  async getScheduleGroup(scheduleGroupId: string, communeId?: string | null) {
+    let query = this.supabase
+      .from('broadcast_schedule_groups')
+      .select('*')
+      .eq('schedule_group_id', scheduleGroupId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong doc duoc nhom lich phat: ${error.message}`);
+    }
+
+    return data ? this.toScheduleGroupRecord(data as BroadcastScheduleGroupRow) : null;
+  }
+
+  async createScheduleGroup(input: Required<ScheduleGroupInput>, communeId?: string | null) {
+    const { data, error } = await this.supabase
+      .from('broadcast_schedule_groups')
+      .insert({
+        name: input.name,
+        enabled: input.enabled,
+        commune_id: communeId || null,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(`Khong tao duoc lich phat: ${error.message}`);
+    }
+
+    return this.toScheduleGroupRecord(data as BroadcastScheduleGroupRow);
+  }
+
+  async updateScheduleGroup(scheduleGroupId: string, input: Required<ScheduleGroupInput>, communeId?: string | null) {
+    let query = this.supabase
+      .from('broadcast_schedule_groups')
+      .update({
+        name: input.name,
+        enabled: input.enabled,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('schedule_group_id', scheduleGroupId);
+
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { data, error } = await query.select('*').maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc lich phat: ${error.message}`);
+    }
+
+    return data ? this.toScheduleGroupRecord(data as BroadcastScheduleGroupRow) : null;
+  }
+
+  async deleteScheduleGroup(scheduleGroupId: string, communeId?: string | null) {
+    let query = this.supabase.from('broadcast_schedule_groups').delete().eq('schedule_group_id', scheduleGroupId);
+    if (communeId) query = query.eq('commune_id', communeId);
+    const { error } = await query;
+    if (error) {
+      throw new Error(`Khong xoa duoc lich phat: ${error.message}`);
+    }
+  }
+
+  async listSchedules(communeId?: string | null, options: { onlyRunnableGroups?: boolean; scheduleGroupId?: string } = {}) {
     let query = this.supabase
       .from('broadcast_schedules')
       .select('*')
@@ -1380,13 +1472,34 @@ export class StorageService {
       .order('start_time', { ascending: true });
 
     if (communeId) query = query.eq('commune_id', communeId);
+    if (options.scheduleGroupId) query = query.eq('schedule_group_id', options.scheduleGroupId);
     const { data, error } = await query;
 
     if (error) {
       throw new Error(`Khong doc duoc broadcast_schedules: ${error.message}`);
     }
 
-    return ((data || []) as BroadcastScheduleRow[]).map((row) => this.toScheduleRecord(row));
+    const schedules = ((data || []) as BroadcastScheduleRow[]).map((row) => this.toScheduleRecord(row));
+    if (!options.onlyRunnableGroups) return schedules;
+
+    const groupIds = Array.from(new Set(schedules.map((schedule) => schedule.scheduleGroupId).filter(Boolean))) as string[];
+    if (!groupIds.length) return [];
+
+    const { data: groups, error: groupError } = await this.supabase
+      .from('broadcast_schedule_groups')
+      .select('schedule_group_id, enabled')
+      .in('schedule_group_id', groupIds);
+
+    if (groupError) {
+      throw new Error(`Khong doc duoc trang thai lich phat: ${groupError.message}`);
+    }
+
+    const enabledGroupIds = new Set(
+      ((groups || []) as Pick<BroadcastScheduleGroupRow, 'schedule_group_id' | 'enabled'>[])
+        .filter((group) => group.enabled)
+        .map((group) => group.schedule_group_id),
+    );
+    return schedules.filter((schedule) => schedule.scheduleGroupId && enabledGroupIds.has(schedule.scheduleGroupId));
   }
 
   async getSchedule(scheduleId: string, communeId?: string | null) {
@@ -1410,6 +1523,35 @@ export class StorageService {
       .from('device_schedule_assignments')
       .select('device_id')
       .eq('schedule_id', scheduleId);
+
+    if (assignmentError) {
+      throw new Error(`Khong doc duoc thiet bi duoc gan lich: ${assignmentError.message}`);
+    }
+
+    const deviceIds = ((assignments || []) as Pick<DeviceScheduleAssignmentRow, 'device_id'>[])
+      .map((assignment) => assignment.device_id)
+      .filter(Boolean);
+    if (!deviceIds.length) return [];
+
+    const { data: devices, error: deviceError } = await this.supabase
+      .from('devices')
+      .select('device_id')
+      .in('device_id', deviceIds)
+      .eq('play_allowed', true)
+      .is('deleted_at', null);
+
+    if (deviceError) {
+      throw new Error(`Khong loc duoc thiet bi duoc phep phat: ${deviceError.message}`);
+    }
+
+    return ((devices || []) as Pick<DeviceRow, 'device_id'>[]).map((device) => device.device_id);
+  }
+
+  async listScheduleGroupAssignedDeviceIds(scheduleGroupId: string) {
+    const { data: assignments, error: assignmentError } = await this.supabase
+      .from('device_schedule_assignments')
+      .select('device_id')
+      .eq('schedule_group_id', scheduleGroupId);
 
     if (assignmentError) {
       throw new Error(`Khong doc duoc thiet bi duoc gan lich: ${assignmentError.message}`);
@@ -2239,12 +2381,62 @@ export class StorageService {
     return device;
   }
 
+  async syncDeviceScheduleGroup(
+    deviceId: string,
+    scheduleGroupId: string,
+    result: { syncStatus: DeviceSyncStatus; syncMessage: string },
+  ) {
+    const existing = await this.getDeviceGroupAssignment(deviceId, scheduleGroupId);
+    if (existing) {
+      const device = await this.getDevice(deviceId);
+      if (!device) throw new Error('Khong tim thay thiet bi sau khi dong bo.');
+      return device;
+    }
+
+    const now = new Date().toISOString();
+    const { error } = await this.supabase.from('device_schedule_assignments').insert(
+      {
+        device_id: deviceId,
+        schedule_group_id: scheduleGroupId,
+        schedule_id: null,
+        sync_status: result.syncStatus,
+        sync_message: result.syncMessage,
+        last_synced_at: result.syncStatus === 'SYNCED' ? now : null,
+        updated_at: now,
+      },
+    );
+
+    if (error) {
+      throw new Error(`Khong tai lich xuong thiet bi: ${error.message}`);
+    }
+
+    const device = await this.getDevice(deviceId);
+    if (!device) throw new Error('Khong tim thay thiet bi sau khi dong bo.');
+    return device;
+  }
+
   async removeDeviceSchedule(deviceId: string, scheduleId: string) {
     const { error } = await this.supabase
       .from('device_schedule_assignments')
       .delete()
       .eq('device_id', deviceId)
       .eq('schedule_id', scheduleId);
+
+    if (error) {
+      throw new Error(`Khong go duoc lich khoi thiet bi: ${error.message}`);
+    }
+
+    const device = await this.getDevice(deviceId);
+    if (!device) throw new Error('Khong tim thay thiet bi sau khi go lich.');
+    return device;
+  }
+
+  async removeDeviceScheduleGroup(deviceId: string, scheduleGroupId: string) {
+    const { error } = await this.supabase
+      .from('device_schedule_assignments')
+      .delete()
+      .eq('device_id', deviceId)
+      .eq('schedule_group_id', scheduleGroupId);
 
     if (error) {
       throw new Error(`Khong go duoc lich khoi thiet bi: ${error.message}`);
@@ -2286,9 +2478,49 @@ export class StorageService {
     return device;
   }
 
+  async updateDeviceScheduleGroupSyncResult(
+    deviceId: string,
+    scheduleGroupId: string,
+    result: { syncStatus: DeviceSyncStatus; syncMessage: string },
+  ) {
+    const existing = await this.getDeviceGroupAssignment(deviceId, scheduleGroupId);
+    if (!existing) {
+      throw new Error('Khong tim thay lich da gan cho thiet bi.');
+    }
+
+    const now = new Date().toISOString();
+    const { error } = await this.supabase
+      .from('device_schedule_assignments')
+      .update({
+        sync_status: result.syncStatus,
+        sync_message: result.syncMessage,
+        last_synced_at: result.syncStatus === 'SYNCED' ? now : null,
+        updated_at: now,
+      })
+      .eq('device_id', deviceId)
+      .eq('schedule_group_id', scheduleGroupId);
+
+    if (error) {
+      throw new Error(`Khong cap nhat duoc ket qua dong bo lich: ${error.message}`);
+    }
+
+    const device = await this.getDevice(deviceId);
+    if (!device) throw new Error('Khong tim thay thiet bi sau khi cap nhat dong bo.');
+    return device;
+  }
+
   async getDeviceClientSchedule(deviceId: string): Promise<DeviceClientSchedulePayload> {
     const assignmentRecords = await this.listDeviceScheduleAssignments(deviceId);
-    const schedules = assignmentRecords.map((assignment) => assignment.schedule);
+    const schedulesById = new Map<string, BroadcastScheduleRecord>();
+    for (const assignment of assignmentRecords) {
+      if (assignment.scheduleGroupId) {
+        const groupSchedules = await this.listSchedules(null, { scheduleGroupId: assignment.scheduleGroupId });
+        groupSchedules.forEach((schedule) => schedulesById.set(schedule.scheduleId, schedule));
+      } else if (assignment.schedule) {
+        schedulesById.set(assignment.schedule.scheduleId, assignment.schedule);
+      }
+    }
+    const schedules = Array.from(schedulesById.values());
     const playlistsByScheduleId: Record<string, PlaylistRecord | null> = {};
     const filesByScheduleId: Record<string, AudioFileRecord | null> = {};
 
@@ -2305,6 +2537,7 @@ export class StorageService {
       assignments: assignmentRecords.map((assignment) => ({
         assignmentId: assignment.assignmentId,
         scheduleId: assignment.scheduleId,
+        scheduleGroupId: assignment.scheduleGroupId,
         syncStatus: assignment.syncStatus,
         lastSyncedAt: assignment.lastSyncedAt,
         syncMessage: assignment.syncMessage,
@@ -2371,6 +2604,7 @@ export class StorageService {
 
   private toScheduleRowInput(input: Required<ScheduleInput>) {
     return {
+      schedule_group_id: input.scheduleGroupId,
       name: input.name,
       source_type: input.sourceType,
       priority: input.priority,
@@ -2390,6 +2624,7 @@ export class StorageService {
   private toScheduleRecord(row: BroadcastScheduleRow): BroadcastScheduleRecord {
     return {
       scheduleId: row.schedule_id,
+      scheduleGroupId: row.schedule_group_id,
       name: row.name,
       sourceType: row.source_type,
       priority: row.priority,
@@ -2404,6 +2639,27 @@ export class StorageService {
       repeatCount: row.repeat_count ?? 0,
       enabled: row.enabled,
       communeId: row.commune_id || null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private async toScheduleGroupRecord(row: BroadcastScheduleGroupRow): Promise<ScheduleGroupRecord> {
+    const { count, error } = await this.supabase
+      .from('broadcast_schedules')
+      .select('schedule_id', { count: 'exact', head: true })
+      .eq('schedule_group_id', row.schedule_group_id);
+
+    if (error) {
+      throw new Error(`Khong dem duoc chuong trinh phat: ${error.message}`);
+    }
+
+    return {
+      scheduleGroupId: row.schedule_group_id,
+      name: row.name,
+      enabled: row.enabled,
+      communeId: row.commune_id || null,
+      programCount: count || 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -2545,19 +2801,42 @@ export class StorageService {
     return data ? (data as DeviceScheduleAssignmentRow) : null;
   }
 
+  private async getDeviceGroupAssignment(deviceId: string, scheduleGroupId: string) {
+    const { data, error } = await this.supabase
+      .from('device_schedule_assignments')
+      .select('*')
+      .eq('device_id', deviceId)
+      .eq('schedule_group_id', scheduleGroupId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Khong doc duoc device_schedule_assignments: ${error.message}`);
+    }
+
+    return data ? (data as DeviceScheduleAssignmentRow) : null;
+  }
+
   private async toDeviceScheduleAssignmentRecord(row: DeviceScheduleAssignmentRow): Promise<DeviceScheduleAssignmentRecord | null> {
-    const schedule = await this.getSchedule(row.schedule_id);
-    if (!schedule) return null;
+    const scheduleGroupId = row.schedule_group_id || null;
+    const scheduleGroup = scheduleGroupId ? await this.getScheduleGroup(scheduleGroupId) : null;
+    const schedule = row.schedule_id
+      ? await this.getSchedule(row.schedule_id)
+      : scheduleGroupId
+        ? (await this.listSchedules(null, { scheduleGroupId }))[0] || null
+        : null;
+    if (!schedule && !scheduleGroup) return null;
     return {
       assignmentId: row.assignment_id,
       deviceId: row.device_id,
       scheduleId: row.schedule_id,
+      scheduleGroupId,
       syncStatus: row.sync_status,
       lastSyncedAt: row.last_synced_at,
       syncMessage: row.sync_message,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       schedule,
+      scheduleGroup,
     };
   }
 

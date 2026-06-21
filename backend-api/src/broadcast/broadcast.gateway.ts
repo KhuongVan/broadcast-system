@@ -534,7 +534,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
   private async tickSchedules() {
     if (this.hasActiveEmergency()) return;
 
-    const schedules = await this.schedules.listSchedules();
+    const schedules = await this.schedules.listRunnableSchedules();
     const runnable = this.schedules.getRunnableSchedules(schedules);
     const candidates = this.sortSchedules(runnable);
     const candidateIds = new Set(candidates.map((schedule) => schedule.scheduleId));
@@ -582,7 +582,9 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
       this.clearScheduleStreamRestart();
     }
 
-    const deviceIds = await this.storage.listScheduleAssignedDeviceIds(schedule.scheduleId);
+    const deviceIds = schedule.scheduleGroupId
+      ? await this.storage.listScheduleGroupAssignedDeviceIds(schedule.scheduleGroupId)
+      : await this.storage.listScheduleAssignedDeviceIds(schedule.scheduleId);
     if (!deviceIds.length) {
       const message = 'Lich chua duoc gan cho thiet bi nao hoac tat ca thiet bi dang bi chan phat.';
       if (!this.skippedScheduleIds.has(schedule.scheduleId)) {

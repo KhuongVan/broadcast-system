@@ -146,17 +146,28 @@ export class DeviceClientService {
 
   async updateSyncResult(device: DeviceRecord, body: DeviceClientSyncResultBody) {
     const scheduleId = this.optionalText(body.scheduleId);
+    const scheduleGroupId = this.optionalText(body.scheduleGroupId);
     const syncStatus = this.normalizeSyncStatus(body.syncStatus);
-    if (!scheduleId) throw new BadRequestException('Vui long gui scheduleId.');
+    if (!scheduleId && !scheduleGroupId) throw new BadRequestException('Vui long gui scheduleId hoac scheduleGroupId.');
     const assignedSchedules = await this.storage.getDeviceClientSchedule(device.deviceId);
-    if (!assignedSchedules.assignments.some((assignment) => assignment.scheduleId === scheduleId)) {
+
+    const matchingGroupId = scheduleGroupId || assignedSchedules.schedules.find((schedule) => schedule.scheduleId === scheduleId)?.scheduleGroupId || null;
+    if (!assignedSchedules.assignments.some((assignment) =>
+      (scheduleId && assignment.scheduleId === scheduleId) ||
+      (matchingGroupId && assignment.scheduleGroupId === matchingGroupId)
+    )) {
       throw new BadRequestException('Lich nay chua duoc gan cho thiet bi.');
     }
 
-    const updated = await this.storage.updateDeviceScheduleSyncResult(device.deviceId, scheduleId, {
+    const result = {
       syncStatus,
       syncMessage: this.optionalText(body.syncMessage) || (syncStatus === 'SYNCED' ? 'Android da dong bo lich.' : 'Android dong bo that bai.'),
-    });
+    };
+    const updated = matchingGroupId
+      ? await this.storage.updateDeviceScheduleGroupSyncResult(device.deviceId, matchingGroupId, result)
+      : scheduleId
+        ? await this.storage.updateDeviceScheduleSyncResult(device.deviceId, scheduleId, result)
+        : await this.storage.updateDeviceScheduleGroupSyncResult(device.deviceId, scheduleGroupId || '', result);
 
     return {
       device: this.toClientDevice(updated),

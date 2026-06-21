@@ -15,6 +15,8 @@ import type {
   LiveBroadcastSession,
   Playlist,
   Schedule,
+  ScheduleGroup,
+  ScheduleGroupInput,
   ScheduleInput,
   Session,
   TtsGenerateInput,
@@ -133,6 +135,36 @@ export const adminApi = {
       method: 'DELETE',
     }),
   listSchedules: () => api<{ schedules: Schedule[] }>('/api/schedules'),
+  listScheduleGroups: () => api<{ scheduleGroups: ScheduleGroup[] }>('/api/schedule-groups'),
+  createScheduleGroup: (scheduleGroup: ScheduleGroupInput) =>
+    api<{ scheduleGroup: ScheduleGroup }>('/api/schedule-groups', {
+      method: 'POST',
+      json: scheduleGroup,
+    }),
+  updateScheduleGroup: (scheduleGroupId: string, scheduleGroup: ScheduleGroupInput) =>
+    api<{ scheduleGroup: ScheduleGroup }>(`/api/schedule-groups/${scheduleGroupId}`, {
+      method: 'PUT',
+      json: scheduleGroup,
+    }),
+  deleteScheduleGroup: (scheduleGroupId: string) =>
+    api<{ success: true }>(`/api/schedule-groups/${scheduleGroupId}`, {
+      method: 'DELETE',
+    }),
+  listScheduleGroupPrograms: (scheduleGroupId: string) => api<{ schedules: Schedule[] }>(`/api/schedule-groups/${scheduleGroupId}/programs`),
+  createScheduleGroupProgram: (scheduleGroupId: string, schedule: ScheduleInput) =>
+    api<{ schedule: Schedule }>(`/api/schedule-groups/${scheduleGroupId}/programs`, {
+      method: 'POST',
+      json: schedule,
+    }),
+  updateScheduleGroupProgram: (scheduleGroupId: string, scheduleId: string, schedule: ScheduleInput) =>
+    api<{ schedule: Schedule }>(`/api/schedule-groups/${scheduleGroupId}/programs/${scheduleId}`, {
+      method: 'PUT',
+      json: schedule,
+    }),
+  deleteScheduleGroupProgram: (scheduleGroupId: string, scheduleId: string) =>
+    api<{ success: true }>(`/api/schedule-groups/${scheduleGroupId}/programs/${scheduleId}`, {
+      method: 'DELETE',
+    }),
   createSchedule: (schedule: ScheduleInput) =>
     api<{ schedule: Schedule }>('/api/schedules', {
       method: 'POST',
@@ -207,7 +239,7 @@ export const adminApi = {
   syncDeviceSchedule: (deviceId: string, scheduleId: string) =>
     api<{ device: Device }>(`/api/devices/${deviceId}/sync-schedule`, {
       method: 'POST',
-      json: { scheduleId },
+      json: { scheduleGroupId: scheduleId },
     }),
   removeDeviceSchedule: (deviceId: string, scheduleId: string) =>
     api<{ device: Device }>(`/api/devices/${deviceId}/schedules/${scheduleId}`, {

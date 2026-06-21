@@ -1,17 +1,22 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { adminApi } from '../lib/api';
-import type { AudioFile, Playlist, Schedule, ScheduleInput } from '../lib/types';
+import type { AudioFile, Playlist, Schedule, ScheduleGroup, ScheduleGroupInput, ScheduleInput } from '../lib/types';
 import { DataState } from './DataState';
 import { Modal } from './Modal';
 import { Panel } from './Panel';
-import { Pagination, paginate, usePagination } from './Pagination';
 import { StatusBadge } from './StatusBadge';
 import { useToast } from './Toast';
 
 const today = new Date().toISOString().slice(0, 10);
-const ALL_REPEAT_TYPES = 'ALL';
+const HOURS = Array.from({ length: 24 }, (_, index) => index);
 
-const emptyForm: ScheduleInput = {
+const emptyGroupForm: ScheduleGroupInput = {
+  name: '',
+  enabled: true,
+};
+
+const emptyProgramForm: ScheduleInput = {
+  scheduleGroupId: null,
   name: '',
   sourceType: 'RTSP',
   priority: 'NORMAL',
@@ -27,72 +32,191 @@ const emptyForm: ScheduleInput = {
   enabled: true,
 };
 
+type CalendarMode = 'day' | 'week' | 'month';
+
 type SchedulesViewProps = {
   embedded?: boolean;
 };
 
+type CalendarOccurrence = {
+  key: string;
+  date: string;
+  schedule: Schedule;
+};
+
 export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const { showToast } = useToast();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [groups, setGroups] = useState<ScheduleGroup[]>([]);
+  const [programs, setPrograms] = useState<Schedule[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [files, setFiles] = useState<AudioFile[]>([]);
-  const [form, setForm] = useState<ScheduleInput>(emptyForm);
-  const [editingId, setEditingId] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [calendarDate, setCalendarDate] = useState(today);
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>('week');
+  const [groupForm, setGroupForm] = useState<ScheduleGroupInput>(emptyGroupForm);
+  const [programForm, setProgramForm] = useState<ScheduleInput>(emptyProgramForm);
+  const [editingGroupId, setEditingGroupId] = useState('');
+  const [editingProgramId, setEditingProgramId] = useState('');
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [programModalOpen, setProgramModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [modalOpen, setModalOpen] = useState(false);
   const [testResult, setTestResult] = useState('');
-  const [search, setSearch] = useState('');
-  const [repeatFilter, setRepeatFilter] = useState<Schedule['repeatType'] | typeof ALL_REPEAT_TYPES>(ALL_REPEAT_TYPES);
-  const [dateFilter, setDateFilter] = useState('');
-  const [timeFromFilter, setTimeFromFilter] = useState('');
-  const [timeToFilter, setTimeToFilter] = useState('');
 
-  const rtspSchedules = useMemo(() => schedules.filter((schedule) => schedule.sourceType === 'RTSP'), [schedules]);
-  const displaySchedules = useMemo(() => [...schedules].sort(compareScheduleCreatedAtDesc), [schedules]);
-  const filteredSchedules = useMemo(() => {
-    const keyword = normalizeSearchText(search);
-    return displaySchedules.filter((schedule) => {
-      if (keyword && !normalizeSearchText(schedule.name).includes(keyword)) return false;
-      if (repeatFilter !== ALL_REPEAT_TYPES && schedule.repeatType !== repeatFilter) return false;
-      if (dateFilter && !scheduleMatchesDate(schedule, dateFilter)) return false;
-      if (timeFromFilter && timeToFilter && !hasTimeOverlap(schedule.startTime, schedule.endTime, timeFromFilter, timeToFilter)) {
-        return false;
-      }
-      return true;
-    });
-  }, [dateFilter, displaySchedules, repeatFilter, search, timeFromFilter, timeToFilter]);
-  const schedulePagination = usePagination(filteredSchedules.length);
-  const pagedSchedules = useMemo(
-    () => paginate(filteredSchedules, schedulePagination.page, schedulePagination.pageSize),
-    [filteredSchedules, schedulePagination.page, schedulePagination.pageSize],
-  );
-  const hasScheduleFilters = Boolean(
-    search || repeatFilter !== ALL_REPEAT_TYPES || dateFilter || timeFromFilter || timeToFilter,
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.scheduleGroupId === selectedGroupId) || null,
+    [groups, selectedGroupId],
   );
 
-  async function load() {
+  const sortedPrograms = useMemo(
+    () => [...programs].sort((a, b) => `${a.startDate} ${a.startTime}`.localeCompare(`${b.startDate} ${b.startTime}`)),
+    [programs],
+  );
+
+  const calendarDays = useMemo(() => getCalendarDays(calendarDate, calendarMode), [calendarDate, calendarMode]);
+  const occurrences = useMemo(() => buildOccurrences(sortedPrograms, calendarDays), [calendarDays, sortedPrograms]);
+  const rtspPrograms = useMemo(() => programs.filter((schedule) => schedule.sourceType === 'RTSP'), [programs]);
+
+  async function load(preferredGroupId?: string) {
     setLoading(true);
     setError('');
     try {
-      const [scheduleData, playlistData, fileData] = await Promise.all([
-        adminApi.listSchedules(),
+      const [groupData, playlistData, fileData] = await Promise.all([
+        adminApi.listScheduleGroups(),
         adminApi.listPlaylists(),
         adminApi.listFiles(),
       ]);
-      setSchedules(scheduleData.schedules);
+      setGroups(groupData.scheduleGroups);
       setPlaylists(playlistData.playlists);
       setFiles(fileData.files);
+      const requestedGroupId = preferredGroupId ?? selectedGroupId;
+      const nextGroupId = groupData.scheduleGroups.some((group) => group.scheduleGroupId === requestedGroupId)
+        ? requestedGroupId
+        : groupData.scheduleGroups[0]?.scheduleGroupId || '';
+      setSelectedGroupId(nextGroupId);
+      if (nextGroupId) await loadPrograms(nextGroupId);
+      else setPrograms([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tải được lịch phát.');
+      showError(err, 'Không tải được lịch phát.');
     } finally {
       setLoading(false);
     }
   }
 
-  function update<K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) {
-    setForm((current) => {
+  async function loadPrograms(scheduleGroupId: string) {
+    const data = await adminApi.listScheduleGroupPrograms(scheduleGroupId);
+    setPrograms(data.schedules);
+  }
+
+  async function selectGroup(scheduleGroupId: string) {
+    setSelectedGroupId(scheduleGroupId);
+    setError('');
+    try {
+      await loadPrograms(scheduleGroupId);
+    } catch (err) {
+      showError(err, 'Không tải được chương trình phát.');
+    }
+  }
+
+  function openCreateGroup() {
+    setEditingGroupId('');
+    setGroupForm(emptyGroupForm);
+    setGroupModalOpen(true);
+  }
+
+  function editGroup(group: ScheduleGroup) {
+    setEditingGroupId(group.scheduleGroupId);
+    setGroupForm({ name: group.name, enabled: group.enabled });
+    setGroupModalOpen(true);
+  }
+
+  function closeGroupModal() {
+    setGroupModalOpen(false);
+    setEditingGroupId('');
+    setGroupForm(emptyGroupForm);
+  }
+
+  async function saveGroup(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      let nextGroupId = selectedGroupId;
+      if (editingGroupId) {
+        await adminApi.updateScheduleGroup(editingGroupId, groupForm);
+      } else {
+        const { scheduleGroup } = await adminApi.createScheduleGroup(groupForm);
+        nextGroupId = scheduleGroup.scheduleGroupId;
+      }
+      closeGroupModal();
+      await load(nextGroupId);
+    } catch (err) {
+      showError(err, 'Không lưu được lịch phát.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteGroup(group: ScheduleGroup) {
+    if (!confirm(`Xóa lịch phát "${group.name}" và toàn bộ chương trình bên trong?`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      await adminApi.deleteScheduleGroup(group.scheduleGroupId);
+      await load('');
+    } catch (err) {
+      showError(err, 'Không xóa được lịch phát.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openCreateProgram(date = calendarDate, time = '06:00') {
+    if (!selectedGroup) return;
+    setEditingProgramId('');
+    setTestResult('');
+    setProgramForm({
+      ...emptyProgramForm,
+      scheduleGroupId: selectedGroup.scheduleGroupId,
+      startDate: date,
+      startTime: time,
+      endTime: addMinutes(time, 30),
+    });
+    setProgramModalOpen(true);
+  }
+
+  function editProgram(schedule: Schedule) {
+    setEditingProgramId(schedule.scheduleId);
+    setTestResult('');
+    setProgramForm({
+      scheduleGroupId: schedule.scheduleGroupId,
+      name: schedule.name,
+      sourceType: schedule.sourceType,
+      priority: schedule.priority,
+      playlistId: schedule.playlistId,
+      fileId: schedule.fileId,
+      fileMode: schedule.fileMode,
+      rtspUrl: schedule.rtspUrl,
+      startDate: schedule.startDate,
+      startTime: schedule.startTime.slice(0, 5),
+      endTime: schedule.endTime.slice(0, 5),
+      repeatType: schedule.repeatType,
+      repeatCount: schedule.sourceType === 'FILE' ? schedule.repeatCount || 0 : 0,
+      enabled: schedule.enabled,
+    });
+    setProgramModalOpen(true);
+  }
+
+  function closeProgramModal() {
+    setProgramModalOpen(false);
+    setEditingProgramId('');
+    setTestResult('');
+    setProgramForm(emptyProgramForm);
+  }
+
+  function updateProgram<K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) {
+    setProgramForm((current) => {
       const next = { ...current, [key]: value };
       if (key === 'sourceType' && value === 'RTSP') {
         next.playlistId = null;
@@ -111,86 +235,52 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     });
   }
 
-  function edit(schedule: Schedule) {
-    setEditingId(schedule.scheduleId);
-    setModalOpen(true);
-    setTestResult('');
-    setForm({
-      name: schedule.name,
-      sourceType: schedule.sourceType,
-      priority: schedule.priority,
-      playlistId: schedule.playlistId,
-      fileId: schedule.fileId,
-      fileMode: schedule.fileMode,
-      rtspUrl: schedule.rtspUrl,
-      startDate: schedule.startDate,
-      startTime: schedule.startTime.slice(0, 5),
-      endTime: schedule.endTime.slice(0, 5),
-      repeatType: schedule.repeatType,
-      repeatCount: schedule.sourceType === 'FILE' ? schedule.repeatCount || 0 : 0,
-      enabled: schedule.enabled,
-    });
-  }
-
-  function resetForm() {
-    setEditingId('');
-    setTestResult('');
-    setForm(emptyForm);
-  }
-
-  function openCreateModal() {
-    resetForm();
-    setModalOpen(true);
-  }
-
-  function closeModal() {
-    setModalOpen(false);
-    resetForm();
-  }
-
-  async function save(event: FormEvent) {
+  async function saveProgram(event: FormEvent) {
     event.preventDefault();
+    if (!selectedGroup) return;
     setSaving(true);
     setError('');
     try {
-      const payload = normalizeForm(form);
-      if (editingId) {
-        await adminApi.updateSchedule(editingId, payload);
+      const payload = normalizeForm({ ...programForm, scheduleGroupId: selectedGroup.scheduleGroupId });
+      if (editingProgramId) {
+        await adminApi.updateScheduleGroupProgram(selectedGroup.scheduleGroupId, editingProgramId, payload);
       } else {
-        await adminApi.createSchedule(payload);
+        await adminApi.createScheduleGroupProgram(selectedGroup.scheduleGroupId, payload);
       }
-      resetForm();
-      setModalOpen(false);
-      await load();
+      closeProgramModal();
+      await loadPrograms(selectedGroup.scheduleGroupId);
+      const refreshedGroups = await adminApi.listScheduleGroups();
+      setGroups(refreshedGroups.scheduleGroups);
     } catch (err) {
-      showError(err, 'Không lưu được lịch phát.');
+      showError(err, 'Không lưu được chương trình phát.');
     } finally {
       setSaving(false);
     }
   }
 
-  async function deleteSchedule(scheduleId: string) {
-    if (!confirm('Xóa lịch phát này?')) return;
+  async function deleteProgram(schedule: Schedule) {
+    if (!selectedGroup || !confirm(`Xóa chương trình "${schedule.name}"?`)) return;
     setSaving(true);
     setError('');
     try {
-      await adminApi.deleteSchedule(scheduleId);
-      if (editingId === scheduleId) resetForm();
-      await load();
+      await adminApi.deleteScheduleGroupProgram(selectedGroup.scheduleGroupId, schedule.scheduleId);
+      await loadPrograms(selectedGroup.scheduleGroupId);
+      const refreshedGroups = await adminApi.listScheduleGroups();
+      setGroups(refreshedGroups.scheduleGroups);
     } catch (err) {
-      showError(err, 'Không xóa được lịch phát.');
+      showError(err, 'Không xóa được chương trình phát.');
     } finally {
       setSaving(false);
     }
   }
 
   async function testRtsp() {
-    if (!form.rtspUrl?.trim()) return;
+    if (!programForm.rtspUrl?.trim()) return;
     setSaving(true);
     setTestResult('');
     setError('');
     try {
-      const result = await adminApi.testRtsp(form.rtspUrl.trim());
+      const result = await adminApi.testRtsp(programForm.rtspUrl.trim());
       setTestResult(result.message || 'Stream URL phản hồi hợp lệ.');
     } catch (err) {
       const message = getErrorMessage(err, 'Không kiểm tra được stream URL.');
@@ -201,21 +291,9 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     }
   }
 
-  function resetScheduleFilters() {
-    setSearch('');
-    setRepeatFilter(ALL_REPEAT_TYPES);
-    setDateFilter('');
-    setTimeFromFilter('');
-    setTimeToFilter('');
+  function moveCalendar(direction: -1 | 1) {
+    setCalendarDate(shiftDate(calendarDate, direction * (calendarMode === 'month' ? 30 : calendarMode === 'week' ? 7 : 1)));
   }
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  useEffect(() => {
-    schedulePagination.setPage(1);
-  }, [dateFilter, repeatFilter, schedulePagination.setPage, search, timeFromFilter, timeToFilter]);
 
   function showError(error: unknown, fallback = 'Có lỗi xảy ra.') {
     const message = getErrorMessage(error, fallback);
@@ -223,248 +301,322 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     showToast({ type: 'error', message });
   }
 
+  useEffect(() => {
+    void load();
+  }, []);
+
   return (
     <Panel
       title={embedded ? 'Lịch phát' : 'Lịch phát'}
-      description="Tạo, sửa, kiểm tra URL và quản lý lịch tự động."
+      description="Quản lý lịch phát bên ngoài và các chương trình phát theo ngày, tuần, tháng."
       actions={
-        <button className="primary" onClick={openCreateModal} type="button">
+        <button className="primary" onClick={openCreateGroup} type="button">
           Tạo lịch phát
         </button>
       }
     >
-      <DataState loading={loading} error={error} empty={!schedules.length && !playlists.length && !files.length} emptyText="Chưa có dữ liệu lịch phát." />
+      <DataState loading={loading} error={error} empty={!groups.length && !playlists.length && !files.length} emptyText="Chưa có dữ liệu lịch phát." />
       {!loading ? (
-        <>
-          {schedules.length ? (
-            <div className="section-toolbar schedule-filter-toolbar">
-              <div className="toolbar-row">
-                <input
-                  aria-label="Tìm theo tên lịch phát"
-                  placeholder="Tìm theo tên lịch phát..."
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-                <select
-                  aria-label="Lọc theo kiểu lặp"
-                  value={repeatFilter}
-                  onChange={(event) => setRepeatFilter(event.target.value as Schedule['repeatType'] | typeof ALL_REPEAT_TYPES)}
+        <div className="schedule-workspace">
+          <aside className="schedule-groups-panel">
+            <div className="schedule-groups-header">
+              <h3>Danh sách lịch phát</h3>
+              <button className="ghost compact" onClick={openCreateGroup} type="button">Thêm</button>
+            </div>
+            <div className="schedule-groups-list">
+              {groups.length ? groups.map((group) => (
+                <button
+                  className={selectedGroupId === group.scheduleGroupId ? 'schedule-group-card active' : 'schedule-group-card'}
+                  key={group.scheduleGroupId}
+                  onClick={() => void selectGroup(group.scheduleGroupId)}
+                  type="button"
                 >
-                  <option value={ALL_REPEAT_TYPES}>Tất cả kiểu lặp</option>
+                  <span>
+                    <strong>{group.name}</strong>
+                    <small>{group.programCount} chương trình · cập nhật {formatShortDate(group.updatedAt)}</small>
+                  </span>
+                  <StatusBadge tone={group.enabled ? 'ok' : 'neutral'}>
+                    {group.enabled ? 'Đang bật' : 'Đang tắt'}
+                  </StatusBadge>
+                </button>
+              )) : <div className="state compact">Chưa có lịch phát.</div>}
+            </div>
+          </aside>
+
+          <section className="schedule-calendar-panel">
+            {selectedGroup ? (
+              <>
+                <div className="calendar-titlebar">
+                  <div>
+                    <h3>{selectedGroup.name}</h3>
+                    <p>{selectedGroup.programCount} chương trình phát trong lịch này</p>
+                  </div>
+                  <div className="row-actions">
+                    <button className="ghost" onClick={() => editGroup(selectedGroup)} type="button">Sửa lịch</button>
+                    <button className="danger" disabled={saving} onClick={() => void deleteGroup(selectedGroup)} type="button">Xóa lịch</button>
+                  </div>
+                </div>
+
+                <div className="calendar-toolbar">
+                  <div className="row-actions">
+                    <button className="ghost icon-btn" aria-label="Lùi" onClick={() => moveCalendar(-1)} type="button">‹</button>
+                    <button className="ghost" onClick={() => setCalendarDate(today)} type="button">Hôm nay</button>
+                    <button className="ghost icon-btn" aria-label="Tiến" onClick={() => moveCalendar(1)} type="button">›</button>
+                  </div>
+                  <strong>{calendarTitle(calendarDate, calendarMode)}</strong>
+                  <div className="row-actions">
+                    <select value={calendarMode} onChange={(event) => setCalendarMode(event.target.value as CalendarMode)} aria-label="Chọn kiểu xem lịch">
+                      <option value="day">Ngày</option>
+                      <option value="week">Tuần</option>
+                      <option value="month">Tháng</option>
+                    </select>
+                    <button className="primary" onClick={() => openCreateProgram()} type="button">Tạo chương trình</button>
+                  </div>
+                </div>
+
+                <Calendar
+                  days={calendarDays}
+                  mode={calendarMode}
+                  occurrences={occurrences}
+                  onCreate={openCreateProgram}
+                  onEdit={editProgram}
+                />
+
+                {sortedPrograms.length ? (
+                  <div className="program-summary table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Tên chương trình</th>
+                          <th>Nguồn</th>
+                          <th>Thời gian</th>
+                          <th>Lặp</th>
+                          <th>Trạng thái</th>
+                          <th>Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedPrograms.map((schedule) => (
+                          <tr key={schedule.scheduleId}>
+                            <td><strong>{schedule.name}</strong></td>
+                            <td>{sourceLabel(schedule)}</td>
+                            <td>{schedule.startDate} {schedule.startTime.slice(0, 5)}-{schedule.endTime.slice(0, 5)}</td>
+                            <td>{repeatLabel(schedule.repeatType)}</td>
+                            <td>
+                              <StatusBadge tone={selectedGroup.enabled && schedule.enabled ? 'ok' : 'neutral'}>
+                                {selectedGroup.enabled && schedule.enabled ? 'Đang bật' : 'Đang tắt'}
+                              </StatusBadge>
+                            </td>
+                            <td>
+                              <div className="row-actions">
+                                <button className="ghost" onClick={() => editProgram(schedule)} type="button">Sửa</button>
+                                <button className="danger" disabled={saving} onClick={() => void deleteProgram(schedule)} type="button">Xóa</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <div className="state">Lịch phát này chưa có chương trình.</div>}
+              </>
+            ) : <div className="state">Chọn hoặc tạo một lịch phát để bắt đầu.</div>}
+          </section>
+        </div>
+      ) : null}
+
+      {groupModalOpen ? (
+        <Modal title={editingGroupId ? 'Sửa lịch phát' : 'Tạo lịch phát'} onClose={closeGroupModal}>
+          <form className="form-panel" onSubmit={saveGroup}>
+            <label>
+              Tên lịch phát
+              <input value={groupForm.name} onChange={(event) => setGroupForm((current) => ({ ...current, name: event.target.value }))} required />
+            </label>
+            <label className="check-row">
+              <input checked={groupForm.enabled} onChange={(event) => setGroupForm((current) => ({ ...current, enabled: event.target.checked }))} type="checkbox" />
+              <span>Bật lịch phát</span>
+            </label>
+            <div className="row-actions">
+              <button className="primary" disabled={saving || !groupForm.name.trim()}>{editingGroupId ? 'Lưu lịch' : 'Tạo lịch'}</button>
+              <button className="ghost" onClick={closeGroupModal} type="button">Hủy</button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {programModalOpen ? (
+        <Modal title={editingProgramId ? 'Sửa chương trình phát' : 'Tạo chương trình phát'} onClose={closeProgramModal}>
+          <form className="form-panel" onSubmit={saveProgram}>
+            <label>
+              Tên chương trình
+              <input value={programForm.name} onChange={(event) => updateProgram('name', event.target.value)} required />
+            </label>
+            <div className="form-grid">
+              <label>
+                Nguồn phát
+                <select value={programForm.sourceType} onChange={(event) => updateProgram('sourceType', event.target.value as ScheduleInput['sourceType'])}>
+                  <option value="RTSP">RTSP/HLS URL</option>
+                  <option value="FILE">File/Playlist</option>
+                </select>
+              </label>
+              {programForm.sourceType === 'FILE' ? (
+                <label>
+                  Phát lặp lại
+                  <div className="inline-fields">
+                    <input min={0} max={30} type="number" value={programForm.repeatCount} onChange={(event) => updateProgram('repeatCount', Number(event.target.value) as ScheduleInput['repeatCount'])} />
+                    <span>Lần</span>
+                  </div>
+                </label>
+              ) : null}
+            </div>
+
+            {programForm.sourceType === 'RTSP' ? (
+              <label>
+                Stream URL
+                <input placeholder="rtsp:// hoặc https://..." value={programForm.rtspUrl || ''} onChange={(event) => updateProgram('rtspUrl', event.target.value)} required />
+              </label>
+            ) : (
+              <>
+                <label>
+                  Playlist
+                  <select value={programForm.playlistId || ''} onChange={(event) => updateProgram('playlistId', event.target.value || null)} required>
+                    <option value="">Chọn playlist</option>
+                    {playlists.map((playlist) => <option key={playlist.playlistId} value={playlist.playlistId}>{playlist.name}</option>)}
+                  </select>
+                </label>
+                <div className="form-grid">
+                  <label>
+                    Chế độ file
+                    <select value={programForm.fileMode || 'PLAYLIST'} onChange={(event) => updateProgram('fileMode', event.target.value as ScheduleInput['fileMode'])}>
+                      <option value="PLAYLIST">Phát cả playlist</option>
+                      <option value="SINGLE_FILE">Một file trong playlist</option>
+                    </select>
+                  </label>
+                  {programForm.fileMode === 'SINGLE_FILE' ? (
+                    <label>
+                      File
+                      <select value={programForm.fileId || ''} onChange={(event) => updateProgram('fileId', event.target.value || null)} required>
+                        <option value="">Chọn file</option>
+                        {files.map((file) => <option key={file.fileId} value={file.fileId}>{file.originalName}</option>)}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+              </>
+            )}
+
+            <div className="form-grid">
+              <label>
+                Ngày bắt đầu
+                <input type="date" value={programForm.startDate} onChange={(event) => updateProgram('startDate', event.target.value)} required />
+              </label>
+              <label>
+                Lặp
+                <select value={programForm.repeatType} onChange={(event) => updateProgram('repeatType', event.target.value as ScheduleInput['repeatType'])}>
                   <option value="ONCE">Một lần</option>
                   <option value="DAILY">Hằng ngày</option>
                   <option value="WEEKLY">Hằng tuần</option>
                   <option value="MONTHLY">Hằng tháng</option>
                 </select>
-                <input
-                  aria-label="Lọc theo ngày phát"
-                  type="date"
-                  value={dateFilter}
-                  onChange={(event) => setDateFilter(event.target.value)}
-                />
-                <div className="schedule-time-filter" aria-label="Lọc theo khung giờ">
-                  <input
-                    aria-label="Từ giờ"
-                    type="time"
-                    value={timeFromFilter}
-                    onChange={(event) => setTimeFromFilter(event.target.value)}
-                  />
-                  <span>đến</span>
-                  <input
-                    aria-label="Đến giờ"
-                    type="time"
-                    value={timeToFilter}
-                    onChange={(event) => setTimeToFilter(event.target.value)}
-                  />
-                </div>
-                {hasScheduleFilters ? (
-                  <button className="ghost" onClick={resetScheduleFilters} type="button">
-                    Xóa lọc
-                  </button>
-                ) : null}
-              </div>
+              </label>
             </div>
-          ) : null}
-          {schedules.length && !filteredSchedules.length ? <div className="state">Không tìm thấy lịch phát phù hợp.</div> : null}
-          {filteredSchedules.length ? (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>STT</th>
-                  <th>Tên lịch</th>
-                  <th>Nguồn</th>
-                  <th>Thời gian</th>
-                  <th>Lặp</th>
-                  <th>Trạng thái</th>
-                  <th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedSchedules.map((schedule, index) => (
-                  <tr key={schedule.scheduleId}>
-                    <td>{schedulePagination.pageSize * (schedulePagination.page - 1) + index + 1}</td>
-                    <td>
-                      <strong>{schedule.name}</strong>
-                    </td>
-                    <td>{sourceLabel(schedule)}</td>
-                    <td>
-                      {schedule.startDate} {schedule.startTime.slice(0, 5)} - {schedule.endTime.slice(0, 5)}
-                    </td>
-                    <td>
-                      {repeatLabel(schedule.repeatType)}
-                      {schedule.sourceType === 'FILE' && schedule.repeatCount > 0 ? (
-                        <div className="subtext">{playbackRepeatLabel(schedule.repeatCount)}</div>
-                      ) : null}
-                    </td>
-                    <td>
-                      <StatusBadge tone={schedule.enabled ? 'ok' : 'neutral'}>
-                        {schedule.enabled ? 'Đang bật' : 'Đang tắt'}
-                      </StatusBadge>
-                    </td>
-                    <td>
-                      <div className="row-actions">
-                        <button className="ghost" onClick={() => edit(schedule)} type="button">
-                          Sửa
-                        </button>
-                        <button className="danger" disabled={saving} onClick={() => deleteSchedule(schedule.scheduleId)} type="button">
-                          Xóa
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pagination page={schedulePagination.page} pageSize={schedulePagination.pageSize} totalItems={filteredSchedules.length} onPageChange={schedulePagination.setPage} />
-          </div>
-          ) : null}
-          {modalOpen ? (
-            <Modal title={editingId ? 'Sửa lịch phát' : 'Tạo lịch phát'} onClose={closeModal}>
-              <form className="form-panel" onSubmit={save}>
-                <label>
-                  Tên lịch
-                  <input value={form.name} onChange={(event) => update('name', event.target.value)} required />
-                </label>
-                <div className="form-grid">
-                  <label>
-                    Nguồn phát
-                    <select value={form.sourceType} onChange={(event) => update('sourceType', event.target.value as ScheduleInput['sourceType'])}>
-                      <option value="RTSP">RTSP/HLS URL</option>
-                      <option value="FILE">File/Playlist</option>
-                    </select>
-                  </label>
-                  {form.sourceType === 'FILE' ? (
-                    <label>
-                      Phát lặp lại
-                      <div className="inline-fields">
-                        <input
-                          min={0}
-                          max={30}
-                          type="number"
-                          value={form.repeatCount}
-                          onChange={(event) => update('repeatCount', Number(event.target.value) as ScheduleInput['repeatCount'])}
-                        />
-                        <span>Lần</span>
-                      </div>
-                    </label>
-                  ) : null}
-                </div>
-
-                {form.sourceType === 'RTSP' ? (
-                  <label>
-                    Stream URL
-                    <input
-                      placeholder="rtsp:// hoặc https://..."
-                      value={form.rtspUrl || ''}
-                      onChange={(event) => update('rtspUrl', event.target.value)}
-                      required
-                    />
-                  </label>
-                ) : (
-                  <>
-                    <label>
-                      Playlist
-                      <select value={form.playlistId || ''} onChange={(event) => update('playlistId', event.target.value || null)} required>
-                        <option value="">Chọn playlist</option>
-                        {playlists.map((playlist) => (
-                          <option key={playlist.playlistId} value={playlist.playlistId}>
-                            {playlist.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="form-grid">
-                      <label>
-                        Chế độ file
-                        <select value={form.fileMode || 'PLAYLIST'} onChange={(event) => update('fileMode', event.target.value as ScheduleInput['fileMode'])}>
-                          <option value="PLAYLIST">Phát cả playlist</option>
-                          <option value="SINGLE_FILE">Một file trong playlist</option>
-                        </select>
-                      </label>
-                      {form.fileMode === 'SINGLE_FILE' ? (
-                        <label>
-                          File
-                          <select value={form.fileId || ''} onChange={(event) => update('fileId', event.target.value || null)} required>
-                            <option value="">Chọn file</option>
-                            {files.map((file) => (
-                              <option key={file.fileId} value={file.fileId}>
-                                {file.originalName}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : null}
-                    </div>
-                  </>
-                )}
-
-                <div className="form-grid">
-                  <label>
-                    Ngày bắt đầu
-                    <input type="date" value={form.startDate} onChange={(event) => update('startDate', event.target.value)} required />
-                  </label>
-                  <label>
-                    Lặp
-                    <select value={form.repeatType} onChange={(event) => update('repeatType', event.target.value as ScheduleInput['repeatType'])}>
-                      <option value="ONCE">Một lần</option>
-                      <option value="DAILY">Hằng ngày</option>
-                      <option value="WEEKLY">Hằng tuần</option>
-                      <option value="MONTHLY">Hằng tháng</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="form-grid">
-                  <label>
-                    Giờ bắt đầu
-                    <input type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} required />
-                  </label>
-                  <label>
-                    Giờ kết thúc
-                    <input type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
-                  </label>
-                </div>
-                <div className="row-actions">
-                  <button className="primary" disabled={saving || !form.name.trim()}>
-                    {editingId ? 'Lưu lịch' : 'Tạo lịch'}
-                  </button>
-                  {form.sourceType === 'RTSP' ? (
-                    <button className="ghost" disabled={saving || !form.rtspUrl?.trim()} onClick={() => void testRtsp()} type="button">
-                      Test URL
-                    </button>
-                  ) : null}
-                  <button className="ghost" onClick={closeModal} type="button">
-                    Hủy
-                  </button>
-                </div>
-                {testResult ? <div className="state compact">{testResult}</div> : null}
-                {rtspSchedules.length ? <p className="subtext">Play-now và sync thiết bị chỉ dùng lịch RTSP/HLS.</p> : null}
-              </form>
-            </Modal>
-          ) : null}
-        </>
+            <div className="form-grid">
+              <label>
+                Giờ bắt đầu
+                <input type="time" value={programForm.startTime} onChange={(event) => updateProgram('startTime', event.target.value)} required />
+              </label>
+              <label>
+                Giờ kết thúc
+                <input type="time" value={programForm.endTime} onChange={(event) => updateProgram('endTime', event.target.value)} required />
+              </label>
+            </div>
+            <label className="check-row">
+              <input checked={programForm.enabled} onChange={(event) => updateProgram('enabled', event.target.checked)} type="checkbox" />
+              <span>Bật chương trình</span>
+            </label>
+            <div className="row-actions">
+              <button className="primary" disabled={saving || !programForm.name.trim()}>{editingProgramId ? 'Lưu chương trình' : 'Tạo chương trình'}</button>
+              {programForm.sourceType === 'RTSP' ? <button className="ghost" disabled={saving || !programForm.rtspUrl?.trim()} onClick={() => void testRtsp()} type="button">Test URL</button> : null}
+              <button className="ghost" onClick={closeProgramModal} type="button">Hủy</button>
+            </div>
+            {testResult ? <div className="state compact">{testResult}</div> : null}
+            {rtspPrograms.length ? <p className="subtext">Play-now và sync thiết bị có thể dùng lịch phát chứa chương trình RTSP/HLS.</p> : null}
+          </form>
+        </Modal>
       ) : null}
     </Panel>
+  );
+}
+
+function Calendar({ days, mode, occurrences, onCreate, onEdit }: {
+  days: string[];
+  mode: CalendarMode;
+  occurrences: CalendarOccurrence[];
+  onCreate: (date: string, time?: string) => void;
+  onEdit: (schedule: Schedule) => void;
+}) {
+  if (mode === 'month') {
+    return (
+      <div className="calendar-month-grid">
+        {days.map((date) => {
+          const dayOccurrences = occurrences.filter((occurrence) => occurrence.date === date);
+          return (
+            <button className={date === today ? 'calendar-month-day today' : 'calendar-month-day'} key={date} onClick={() => onCreate(date)} type="button">
+              <strong>{formatDayNumber(date)}</strong>
+              <span>{formatWeekday(date)}</span>
+              <div>
+                {dayOccurrences.slice(0, 3).map((occurrence) => (
+                  <em key={occurrence.key} onClick={(event) => { event.stopPropagation(); onEdit(occurrence.schedule); }}>
+                    {occurrence.schedule.startTime.slice(0, 5)} {occurrence.schedule.name}
+                  </em>
+                ))}
+                {dayOccurrences.length > 3 ? <small>+{dayOccurrences.length - 3} chương trình</small> : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className={mode === 'day' ? 'calendar-time-grid day' : 'calendar-time-grid week'}>
+      <div className="calendar-time-axis">
+        <span />
+        {HOURS.map((hour) => <span key={hour}>{String(hour).padStart(2, '0')}:00</span>)}
+      </div>
+      {days.map((date) => (
+        <div className={date === today ? 'calendar-day-column today' : 'calendar-day-column'} key={date}>
+          <button className="calendar-day-head" onClick={() => onCreate(date)} type="button">
+            <span>{formatWeekday(date)}</span>
+            <strong>{formatDisplayDate(date)}</strong>
+          </button>
+          <div className="calendar-day-slots">
+            {HOURS.map((hour) => (
+              <button
+                aria-label={`Tạo chương trình ngày ${date} lúc ${hour}:00`}
+                className="calendar-hour-slot"
+                key={hour}
+                onClick={() => onCreate(date, `${String(hour).padStart(2, '0')}:00`)}
+                type="button"
+              />
+            ))}
+            {occurrences.filter((occurrence) => occurrence.date === date).map((occurrence) => (
+              <button
+                className={occurrence.schedule.enabled ? 'calendar-event' : 'calendar-event disabled'}
+                key={occurrence.key}
+                onClick={() => onEdit(occurrence.schedule)}
+                style={eventStyle(occurrence.schedule)}
+                type="button"
+              >
+                <strong>{occurrence.schedule.name}</strong>
+                <span>{occurrence.schedule.startTime.slice(0, 5)}-{occurrence.schedule.endTime.slice(0, 5)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -483,20 +635,58 @@ function normalizeForm(form: ScheduleInput): ScheduleInput {
   };
 }
 
+function buildOccurrences(schedules: Schedule[], days: string[]) {
+  const daySet = new Set(days);
+  const occurrences: CalendarOccurrence[] = [];
+  for (const schedule of schedules) {
+    for (const date of days) {
+      if (scheduleMatchesDate(schedule, date) && daySet.has(date)) {
+        occurrences.push({ key: `${schedule.scheduleId}:${date}`, date, schedule });
+      }
+    }
+  }
+  return occurrences;
+}
+
+function getCalendarDays(date: string, mode: CalendarMode) {
+  if (mode === 'day') return [date];
+  if (mode === 'week') {
+    const start = startOfWeek(date);
+    return Array.from({ length: 7 }, (_, index) => shiftDate(start, index));
+  }
+  const [year, month] = date.split('-').map(Number);
+  const first = `${year}-${String(month).padStart(2, '0')}-01`;
+  const start = startOfWeek(first);
+  return Array.from({ length: 42 }, (_, index) => shiftDate(start, index));
+}
+
+function scheduleMatchesDate(schedule: Schedule, date: string) {
+  if (date < schedule.startDate) return false;
+  if (schedule.repeatType === 'ONCE') return date === schedule.startDate;
+  if (schedule.repeatType === 'DAILY') return true;
+  if (schedule.repeatType === 'WEEKLY') return dayOfWeek(date) === dayOfWeek(schedule.startDate);
+  if (schedule.repeatType === 'MONTHLY') return date.slice(8, 10) === schedule.startDate.slice(8, 10);
+  return false;
+}
+
+function eventStyle(schedule: Schedule) {
+  const start = timeToMinutes(schedule.startTime);
+  const end = timeToMinutes(schedule.endTime);
+  return {
+    top: `${(start / 60) * 54}px`,
+    minHeight: `${Math.max(34, ((end - start) / 60) * 54 - 4)}px`,
+  };
+}
+
+function calendarTitle(date: string, mode: CalendarMode) {
+  if (mode === 'day') return formatDisplayDate(date);
+  if (mode === 'week') return `${formatDisplayDate(startOfWeek(date))} - ${formatDisplayDate(shiftDate(startOfWeek(date), 6))}`;
+  const [year, month] = date.split('-').map(Number);
+  return `Tháng ${month}/${year}`;
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
-}
-
-function normalizeSearchText(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-function compareScheduleCreatedAtDesc(a: Schedule, b: Schedule) {
-  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
 function sourceLabel(schedule: Schedule) {
@@ -513,21 +703,9 @@ function repeatLabel(value: Schedule['repeatType']) {
   }[value];
 }
 
-function playbackRepeatLabel(value: number) {
-  return `Phát lại ${value} lần`;
-}
-
-function scheduleMatchesDate(schedule: Schedule, date: string) {
-  if (date < schedule.startDate) return false;
-  if (schedule.repeatType === 'ONCE') return date === schedule.startDate;
-  if (schedule.repeatType === 'DAILY') return true;
-  if (schedule.repeatType === 'WEEKLY') return dayOfWeek(date) === dayOfWeek(schedule.startDate);
-  if (schedule.repeatType === 'MONTHLY') return dayOfMonth(date) === dayOfMonth(schedule.startDate);
-  return false;
-}
-
-function hasTimeOverlap(startA: string, endA: string, startB: string, endB: string) {
-  return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(startB) < timeToMinutes(endA);
+function addMinutes(time: string, minutes: number) {
+  const total = Math.min(23 * 60 + 59, timeToMinutes(time) + minutes);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function timeToMinutes(value: string) {
@@ -535,11 +713,34 @@ function timeToMinutes(value: string) {
   return hour * 60 + minute;
 }
 
+function startOfWeek(date: string) {
+  return shiftDate(date, -dayOfWeek(date));
+}
+
+function shiftDate(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
 function dayOfWeek(date: string) {
   const [year, month, day] = date.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
-function dayOfMonth(date: string) {
-  return Number(date.split('-')[2]);
+function formatWeekday(date: string) {
+  return ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][dayOfWeek(date)];
+}
+
+function formatDayNumber(date: string) {
+  return String(Number(date.slice(8, 10)));
+}
+
+function formatDisplayDate(date: string) {
+  const [year, month, day] = date.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString('vi-VN');
 }
