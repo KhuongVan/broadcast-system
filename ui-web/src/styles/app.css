@@ -4592,6 +4592,19 @@ tbody tr:hover td {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 }
 
+.generated-username-field {
+  display: grid;
+  gap: 6px;
+}
+
+.generated-username-field span {
+  min-height: 20px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

@@ -7,6 +7,7 @@ import { useToast } from './Toast';
 const emptyCommuneForm = { name: '', code: '', status: 'ACTIVE' as const };
 const emptyUserForm = {
   username: '',
+  accountCode: '',
   password: '',
   displayName: '',
   role: 'COMMUNE_USER',
@@ -26,6 +27,16 @@ export function SystemAdminView() {
   const [loading, setLoading] = useState(true);
 
   const activeCommunes = useMemo(() => communes.filter((commune) => commune.status === 'ACTIVE'), [communes]);
+  const selectedCommune = useMemo(
+    () => communes.find((commune) => commune.communeId === userForm.communeId) || null,
+    [communes, userForm.communeId],
+  );
+  const generatedCommuneUsername = useMemo(() => {
+    if (userForm.role !== 'COMMUNE_USER' || !selectedCommune) return '';
+    const prefix = slugUsernamePart(selectedCommune.code);
+    const accountCode = slugUsernamePart(userForm.accountCode);
+    return prefix && accountCode ? `${prefix}_${accountCode}` : '';
+  }, [selectedCommune, userForm.accountCode, userForm.role]);
 
   useEffect(() => {
     loadData().catch((error) => showToast({ message: error instanceof Error ? error.message : 'Không tải được dữ liệu.' }));
@@ -58,8 +69,9 @@ export function SystemAdminView() {
 
   async function createUser(event: FormEvent) {
     event.preventDefault();
+    const username = userForm.role === 'SYSTEM_ADMIN' ? slugUsernamePart(userForm.username) : generatedCommuneUsername;
     await adminApi.createUser({
-      username: userForm.username,
+      username,
       password: userForm.password,
       displayName: userForm.displayName || null,
       role: userForm.role,
@@ -119,18 +131,25 @@ export function SystemAdminView() {
 
       <Panel title="User" description="Tạo tài khoản hệ thống và tài khoản xã">
         <form className="admin-user-form" onSubmit={(event) => void createUser(event)}>
-          <input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} placeholder="Username" required />
-          <input value={userForm.displayName} onChange={(event) => setUserForm({ ...userForm, displayName: event.target.value })} placeholder="Tên hiển thị" />
-          <input value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} placeholder="Mật khẩu ban đầu" type="password" required />
           <select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value })}>
             <option value="COMMUNE_USER">User xã</option>
             <option value="SYSTEM_ADMIN">Admin hệ thống</option>
           </select>
           <select value={userForm.communeId} onChange={(event) => setUserForm({ ...userForm, communeId: event.target.value })} disabled={userForm.role === 'SYSTEM_ADMIN'} required={userForm.role !== 'SYSTEM_ADMIN'}>
             <option value="">Chọn xã</option>
-            {activeCommunes.map((commune) => <option key={commune.communeId} value={commune.communeId}>{commune.name}</option>)}
+            {activeCommunes.map((commune) => <option key={commune.communeId} value={commune.communeId}>{formatCommuneOption(commune)}</option>)}
           </select>
-          <button type="submit">Tạo user</button>
+          {userForm.role === 'SYSTEM_ADMIN' ? (
+            <input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} placeholder="Username admin" required />
+          ) : (
+            <label className="generated-username-field">
+              <input value={userForm.accountCode} onChange={(event) => setUserForm({ ...userForm, accountCode: event.target.value })} placeholder="Mã tài khoản, VD: vanhanh01" required />
+              <span>{generatedCommuneUsername || 'Chọn xã và nhập mã tài khoản'}</span>
+            </label>
+          )}
+          <input value={userForm.displayName} onChange={(event) => setUserForm({ ...userForm, displayName: event.target.value })} placeholder="Tên hiển thị" />
+          <input value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} placeholder="Mật khẩu ban đầu" type="password" required />
+          <button disabled={userForm.role === 'COMMUNE_USER' && !generatedCommuneUsername} type="submit">Tạo user</button>
         </form>
         <div className="table-wrap">
           <table>
@@ -171,4 +190,19 @@ export function SystemAdminView() {
       </Panel>
     </div>
   );
+}
+
+function formatCommuneOption(commune: Commune) {
+  return `${commune.name} (${commune.code})`;
+}
+
+function slugUsernamePart(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
 }

@@ -78,7 +78,7 @@ export class AdminUsersController {
   }
 
   private async normalizeUser(body: UserBody, requirePassword: boolean) {
-    const username = String(body.username || '').trim();
+    const username = this.normalizeUsername(body.username);
     const password = String(body.password || '');
     const role = body.role === 'SYSTEM_ADMIN' ? 'SYSTEM_ADMIN' : 'COMMUNE_USER';
     const communeId = role === 'SYSTEM_ADMIN' ? null : String(body.communeId || '').trim();
@@ -88,7 +88,14 @@ export class AdminUsersController {
     if (requirePassword && !username) throw new BadRequestException('Vui long nhap username.');
     if (requirePassword && password.length < 8) throw new BadRequestException('Mat khau phai co it nhat 8 ky tu.');
     if (role === 'COMMUNE_USER' && !communeId) throw new BadRequestException('User xa phai duoc gan voi mot xa.');
-    if (communeId && !(await this.storage.getCommune(communeId))) throw new BadRequestException('Xa khong ton tai.');
+    const commune = communeId ? await this.storage.getCommune(communeId) : null;
+    if (communeId && !commune) throw new BadRequestException('Xa khong ton tai.');
+    if (role === 'COMMUNE_USER' && commune) {
+      const prefix = `${this.slugUsernamePart(commune.code)}_`;
+      if (!username.startsWith(prefix)) {
+        throw new BadRequestException(`Username user xa phai bat dau bang ${prefix}.`);
+      }
+    }
 
     return {
       username,
@@ -98,5 +105,28 @@ export class AdminUsersController {
       communeId,
       active,
     };
+  }
+
+  private normalizeUsername(value: unknown) {
+    const username = String(value || '').trim().toLowerCase();
+    if (!username) return '';
+    if (username.length < 3 || username.length > 64) {
+      throw new BadRequestException('Username phai dai tu 3 den 64 ky tu.');
+    }
+    if (!/^[a-z0-9_]+$/.test(username)) {
+      throw new BadRequestException('Username chi duoc gom chu thuong a-z, so 0-9 va dau gach duoi.');
+    }
+    return username;
+  }
+
+  private slugUsernamePart(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/đ/g, 'd')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
   }
 }
