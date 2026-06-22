@@ -44,6 +44,8 @@ type CalendarOccurrence = {
   schedule: Schedule;
 };
 
+type ScheduleScreenMode = 'list' | 'calendar';
+
 export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const { showToast } = useToast();
   const [groups, setGroups] = useState<ScheduleGroup[]>([]);
@@ -51,6 +53,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [files, setFiles] = useState<AudioFile[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [screenMode, setScreenMode] = useState<ScheduleScreenMode>('list');
   const [calendarDate, setCalendarDate] = useState(today);
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('week');
   const [groupForm, setGroupForm] = useState<ScheduleGroupInput>(emptyGroupForm);
@@ -95,8 +98,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
         ? requestedGroupId
         : groupData.scheduleGroups[0]?.scheduleGroupId || '';
       setSelectedGroupId(nextGroupId);
-      if (nextGroupId) await loadPrograms(nextGroupId);
-      else setPrograms([]);
+      if (!nextGroupId) setPrograms([]);
     } catch (err) {
       showError(err, 'Không tải được lịch phát.');
     } finally {
@@ -117,6 +119,31 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     } catch (err) {
       showError(err, 'Không tải được chương trình phát.');
     }
+  }
+
+  async function openPrograms(group: ScheduleGroup) {
+    setSelectedGroupId(group.scheduleGroupId);
+    setScreenMode('calendar');
+    setError('');
+    try {
+      await loadPrograms(group.scheduleGroupId);
+    } catch (err) {
+      showError(err, 'Không tải được chương trình phát.');
+    }
+  }
+
+  async function changeCalendarGroup(scheduleGroupId: string) {
+    setSelectedGroupId(scheduleGroupId);
+    setError('');
+    try {
+      await loadPrograms(scheduleGroupId);
+    } catch (err) {
+      showError(err, 'Không tải được chương trình phát.');
+    }
+  }
+
+  function backToList() {
+    setScreenMode('list');
   }
 
   function openCreateGroup() {
@@ -165,6 +192,9 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     try {
       await adminApi.deleteScheduleGroup(group.scheduleGroupId);
       await load('');
+      if (selectedGroupId === group.scheduleGroupId) {
+        setScreenMode('list');
+      }
     } catch (err) {
       showError(err, 'Không xóa được lịch phát.');
     } finally {
@@ -316,113 +346,140 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       }
     >
       <DataState loading={loading} error={error} empty={!groups.length && !playlists.length && !files.length} emptyText="Chưa có dữ liệu lịch phát." />
-      {!loading ? (
-        <div className="schedule-workspace">
-          <aside className="schedule-groups-panel">
-            <div className="schedule-groups-header">
-              <h3>Danh sách lịch phát</h3>
-              <button className="ghost compact" onClick={openCreateGroup} type="button">Thêm</button>
-            </div>
-            <div className="schedule-groups-list">
-              {groups.length ? groups.map((group) => (
-                <button
-                  className={selectedGroupId === group.scheduleGroupId ? 'schedule-group-card active' : 'schedule-group-card'}
-                  key={group.scheduleGroupId}
-                  onClick={() => void selectGroup(group.scheduleGroupId)}
-                  type="button"
-                >
-                  <span>
-                    <strong>{group.name}</strong>
-                    <small>{group.programCount} chương trình · cập nhật {formatShortDate(group.updatedAt)}</small>
-                  </span>
-                  <StatusBadge tone={group.enabled ? 'ok' : 'neutral'}>
-                    {group.enabled ? 'Đang bật' : 'Đang tắt'}
-                  </StatusBadge>
-                </button>
-              )) : <div className="state compact">Chưa có lịch phát.</div>}
-            </div>
-          </aside>
+      {!loading && screenMode === 'list' ? (
+        groups.length ? (
+          <div className="schedule-list-view table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tên lịch phát</th>
+                  <th>Số chương trình</th>
+                  <th>Trạng thái</th>
+                  <th>Cập nhật</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((group) => (
+                  <tr key={group.scheduleGroupId}>
+                    <td>
+                      <strong>{group.name}</strong>
+                    </td>
+                    <td>{group.programCount} chương trình</td>
+                    <td>
+                      <StatusBadge tone={group.enabled ? 'ok' : 'neutral'}>
+                        {group.enabled ? 'Đang bật' : 'Đang tắt'}
+                      </StatusBadge>
+                    </td>
+                    <td>{formatShortDate(group.updatedAt)}</td>
+                    <td>
+                      <div className="row-actions schedule-table-actions">
+                        <button className="ghost" onClick={() => editGroup(group)} type="button">Sửa lịch</button>
+                        <button className="primary" onClick={() => void openPrograms(group)} type="button">Xem chương trình phát</button>
+                        <button className="danger" disabled={saving} onClick={() => void deleteGroup(group)} type="button">Xóa</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="state">Chưa có lịch phát.</div>
+      ) : null}
 
-          <section className="schedule-calendar-panel">
-            {selectedGroup ? (
-              <>
-                <div className="calendar-titlebar">
-                  <div>
-                    <h3>{selectedGroup.name}</h3>
-                    <p>{selectedGroup.programCount} chương trình phát trong lịch này</p>
-                  </div>
-                  <div className="row-actions">
-                    <button className="ghost" onClick={() => editGroup(selectedGroup)} type="button">Sửa lịch</button>
-                    <button className="danger" disabled={saving} onClick={() => void deleteGroup(selectedGroup)} type="button">Xóa lịch</button>
-                  </div>
-                </div>
-
-                <div className="calendar-toolbar">
-                  <div className="row-actions">
-                    <button className="ghost icon-btn" aria-label="Lùi" onClick={() => moveCalendar(-1)} type="button">‹</button>
-                    <button className="ghost" onClick={() => setCalendarDate(today)} type="button">Hôm nay</button>
-                    <button className="ghost icon-btn" aria-label="Tiến" onClick={() => moveCalendar(1)} type="button">›</button>
-                  </div>
-                  <strong>{calendarTitle(calendarDate, calendarMode)}</strong>
-                  <div className="row-actions">
-                    <select value={calendarMode} onChange={(event) => setCalendarMode(event.target.value as CalendarMode)} aria-label="Chọn kiểu xem lịch">
-                      <option value="day">Ngày</option>
-                      <option value="week">Tuần</option>
-                      <option value="month">Tháng</option>
+      {!loading && screenMode === 'calendar' ? (
+        <section className="schedule-calendar-panel full">
+          {selectedGroup ? (
+            <>
+              <div className="calendar-titlebar detail">
+                <div className="row-actions">
+                  <button className="ghost" onClick={backToList} type="button">Quay lại danh sách</button>
+                  <label className="calendar-group-select">
+                    <span>Chọn lịch phát</span>
+                    <select value={selectedGroupId} onChange={(event) => void changeCalendarGroup(event.target.value)}>
+                      {groups.map((group) => (
+                        <option key={group.scheduleGroupId} value={group.scheduleGroupId}>{group.name}</option>
+                      ))}
                     </select>
-                    <button className="primary" onClick={() => openCreateProgram()} type="button">Tạo chương trình</button>
-                  </div>
+                  </label>
                 </div>
+                <div className="calendar-selected-summary">
+                  <h3>{selectedGroup.name}</h3>
+                  <p>{selectedGroup.programCount} chương trình phát trong lịch này</p>
+                </div>
+                <div className="row-actions">
+                  <StatusBadge tone={selectedGroup.enabled ? 'ok' : 'neutral'}>
+                    {selectedGroup.enabled ? 'Đang bật' : 'Đang tắt'}
+                  </StatusBadge>
+                  <button className="ghost" onClick={() => editGroup(selectedGroup)} type="button">Sửa lịch</button>
+                  <button className="primary" onClick={() => openCreateProgram()} type="button">Tạo chương trình</button>
+                </div>
+              </div>
 
-                <Calendar
-                  days={calendarDays}
-                  mode={calendarMode}
-                  occurrences={occurrences}
-                  onCreate={openCreateProgram}
-                  onEdit={editProgram}
-                />
+              <div className="calendar-toolbar">
+                <div className="row-actions">
+                  <button className="ghost icon-btn" aria-label="Lùi" onClick={() => moveCalendar(-1)} type="button">‹</button>
+                  <button className="ghost" onClick={() => setCalendarDate(today)} type="button">Hôm nay</button>
+                  <button className="ghost icon-btn" aria-label="Tiến" onClick={() => moveCalendar(1)} type="button">›</button>
+                </div>
+                <strong>{calendarTitle(calendarDate, calendarMode)}</strong>
+                <div className="row-actions">
+                  <select value={calendarMode} onChange={(event) => setCalendarMode(event.target.value as CalendarMode)} aria-label="Chọn kiểu xem lịch">
+                    <option value="day">Ngày</option>
+                    <option value="week">Tuần</option>
+                    <option value="month">Tháng</option>
+                  </select>
+                </div>
+              </div>
 
-                {sortedPrograms.length ? (
-                  <div className="program-summary table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Tên chương trình</th>
-                          <th>Nguồn</th>
-                          <th>Thời gian</th>
-                          <th>Lặp</th>
-                          <th>Trạng thái</th>
-                          <th>Thao tác</th>
+              <Calendar
+                days={calendarDays}
+                mode={calendarMode}
+                occurrences={occurrences}
+                onCreate={openCreateProgram}
+                onEdit={editProgram}
+              />
+
+              {sortedPrograms.length ? (
+                <div className="program-summary table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Tên chương trình</th>
+                        <th>Nguồn</th>
+                        <th>Thời gian</th>
+                        <th>Lặp</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedPrograms.map((schedule) => (
+                        <tr key={schedule.scheduleId}>
+                          <td><strong>{schedule.name}</strong></td>
+                          <td>{sourceLabel(schedule)}</td>
+                          <td>{schedule.startDate} {schedule.startTime.slice(0, 5)}-{schedule.endTime.slice(0, 5)}</td>
+                          <td>{repeatLabel(schedule.repeatType)}</td>
+                          <td>
+                            <StatusBadge tone={selectedGroup.enabled && schedule.enabled ? 'ok' : 'neutral'}>
+                              {selectedGroup.enabled && schedule.enabled ? 'Đang bật' : 'Đang tắt'}
+                            </StatusBadge>
+                          </td>
+                          <td>
+                            <div className="row-actions">
+                              <button className="ghost" onClick={() => editProgram(schedule)} type="button">Sửa</button>
+                              <button className="danger" disabled={saving} onClick={() => void deleteProgram(schedule)} type="button">Xóa</button>
+                            </div>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {sortedPrograms.map((schedule) => (
-                          <tr key={schedule.scheduleId}>
-                            <td><strong>{schedule.name}</strong></td>
-                            <td>{sourceLabel(schedule)}</td>
-                            <td>{schedule.startDate} {schedule.startTime.slice(0, 5)}-{schedule.endTime.slice(0, 5)}</td>
-                            <td>{repeatLabel(schedule.repeatType)}</td>
-                            <td>
-                              <StatusBadge tone={selectedGroup.enabled && schedule.enabled ? 'ok' : 'neutral'}>
-                                {selectedGroup.enabled && schedule.enabled ? 'Đang bật' : 'Đang tắt'}
-                              </StatusBadge>
-                            </td>
-                            <td>
-                              <div className="row-actions">
-                                <button className="ghost" onClick={() => editProgram(schedule)} type="button">Sửa</button>
-                                <button className="danger" disabled={saving} onClick={() => void deleteProgram(schedule)} type="button">Xóa</button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : <div className="state">Lịch phát này chưa có chương trình.</div>}
-              </>
-            ) : <div className="state">Chọn hoặc tạo một lịch phát để bắt đầu.</div>}
-          </section>
-        </div>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <div className="state">Lịch phát này chưa có chương trình.</div>}
+            </>
+          ) : <div className="state">Chọn hoặc tạo một lịch phát để bắt đầu.</div>}
+        </section>
       ) : null}
 
       {groupModalOpen ? (

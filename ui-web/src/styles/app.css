@@ -1505,6 +1505,51 @@ audio {
   min-width: 0;
 }
 
+.schedule-calendar-panel.full {
+  width: 100%;
+}
+
+.schedule-list-view td:first-child strong {
+  display: block;
+  min-width: 180px;
+}
+
+.schedule-table-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.calendar-titlebar.detail {
+  align-items: flex-start;
+  border: 1px solid #dfe7f1;
+  border-radius: 8px;
+  flex-wrap: wrap;
+  padding: 12px;
+}
+
+.calendar-selected-summary {
+  min-width: 220px;
+  text-align: center;
+}
+
+.calendar-group-select {
+  align-items: center;
+  color: #33445f;
+  display: flex;
+  font-weight: 800;
+  gap: 8px;
+}
+
+.calendar-group-select span {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.calendar-group-select select {
+  min-width: 220px;
+  width: min(320px, 45vw);
+}
+
 .calendar-toolbar {
   border: 1px solid #dfe7f1;
   border-radius: 8px;
@@ -1701,6 +1746,32 @@ audio {
 
 .program-summary {
   margin-top: 2px;
+}
+
+@media (max-width: 920px) {
+  .calendar-titlebar.detail,
+  .calendar-toolbar {
+    align-items: stretch;
+  }
+
+  .calendar-titlebar.detail > .row-actions,
+  .calendar-toolbar > .row-actions {
+    width: 100%;
+  }
+
+  .calendar-selected-summary {
+    text-align: left;
+  }
+
+  .calendar-group-select {
+    align-items: stretch;
+    display: grid;
+    width: 100%;
+  }
+
+  .calendar-group-select select {
+    width: 100%;
+  }
 }
 
 .section-toolbar-actions {
