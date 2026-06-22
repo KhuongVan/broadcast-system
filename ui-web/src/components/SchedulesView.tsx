@@ -142,8 +142,23 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
     }
   }
 
-  function backToList() {
-    setScreenMode('list');
+  async function toggleSelectedGroupEnabled() {
+    if (!selectedGroup) return;
+    setSaving(true);
+    setError('');
+    try {
+      const nextEnabled = !selectedGroup.enabled;
+      await adminApi.updateScheduleGroup(selectedGroup.scheduleGroupId, {
+        name: selectedGroup.name,
+        enabled: nextEnabled,
+      });
+      const refreshedGroups = await adminApi.listScheduleGroups();
+      setGroups(refreshedGroups.scheduleGroups);
+    } catch (err) {
+      showError(err, 'Không cập nhật được trạng thái lịch phát.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function openCreateGroup() {
@@ -393,7 +408,6 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
             <>
               <div className="calendar-titlebar detail">
                 <div className="row-actions">
-                  <button className="ghost" onClick={backToList} type="button">Quay lại danh sách</button>
                   <label className="calendar-group-select">
                     <span>Chọn lịch phát</span>
                     <select value={selectedGroupId} onChange={(event) => void changeCalendarGroup(event.target.value)}>
@@ -408,10 +422,16 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                   <p>{selectedGroup.programCount} chương trình phát trong lịch này</p>
                 </div>
                 <div className="row-actions">
-                  <StatusBadge tone={selectedGroup.enabled ? 'ok' : 'neutral'}>
+                  <button
+                    aria-pressed={selectedGroup.enabled}
+                    className={selectedGroup.enabled ? 'schedule-enable-toggle active' : 'schedule-enable-toggle'}
+                    disabled={saving}
+                    onClick={() => void toggleSelectedGroupEnabled()}
+                    type="button"
+                  >
+                    <span aria-hidden="true" />
                     {selectedGroup.enabled ? 'Đang bật' : 'Đang tắt'}
-                  </StatusBadge>
-                  <button className="ghost" onClick={() => editGroup(selectedGroup)} type="button">Sửa lịch</button>
+                  </button>
                   <button className="primary" onClick={() => openCreateProgram()} type="button">Tạo chương trình</button>
                 </div>
               </div>
