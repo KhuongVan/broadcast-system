@@ -310,6 +310,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
         status: 'REGISTERED',
         device: {
           deviceId: device.deviceId,
+          macAddress: device.macAddress,
           name: device.name,
           area: device.area,
         },

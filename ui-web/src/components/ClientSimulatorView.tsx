@@ -10,6 +10,7 @@ type ClientRegistrationStatus = {
   androidId?: string;
   device?: {
     deviceId: string;
+    macAddress?: string | null;
     name: string;
     area: string;
   };
@@ -18,6 +19,7 @@ type ClientRegistrationStatus = {
 type DeviceClientRegisterResponse = {
   device: {
     deviceId: string;
+    macAddress?: string | null;
     name: string;
     area: string;
   };
@@ -218,7 +220,7 @@ export function ClientSimulatorView() {
       const payload = (await response.json()) as DeviceClientRegisterResponse;
       deviceTokenRef.current = payload.deviceToken;
       localStorage.setItem(getDeviceTokenStorageKey(registrationPayload), payload.deviceToken);
-      setDeviceInfo(`Thiết bị mô phỏng: ${payload.device.name} | Địa bàn: ${payload.device.area} | ID: ${payload.device.deviceId}`);
+      setDeviceInfo(`Thiết bị mô phỏng: ${payload.device.name} | Địa bàn: ${payload.device.area} | MAC: ${payload.device.macAddress || 'Chưa có'}`);
       scheduleHeartbeat(payload.heartbeatIntervalSeconds);
     } catch (error) {
       deviceTokenRef.current = localStorage.getItem(getDeviceTokenStorageKey(registrationPayload));
@@ -280,7 +282,7 @@ export function ClientSimulatorView() {
   function handleRegistrationStatus(payload: ClientRegistrationStatus) {
     clearRegistrationTimer();
     if (payload.status === 'REGISTERED' && payload.device) {
-      setDeviceInfo(`Thiết bị mô phỏng: ${payload.device.name} | Địa bàn: ${payload.device.area} | ID: ${payload.device.deviceId}`);
+      setDeviceInfo(`Thiết bị mô phỏng: ${payload.device.name} | Địa bàn: ${payload.device.area} | MAC: ${payload.device.macAddress || 'Chưa có'}`);
       return;
     }
 

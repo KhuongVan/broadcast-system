@@ -2109,7 +2109,7 @@ export class PagesController {
       registrationAnswered = true;
       clearRegistrationTimer();
       if (payload.status === 'REGISTERED' && payload.device) {
-        setDeviceInfo('Thiết bị mô phỏng: ' + payload.device.name + ' | Địa bàn: ' + payload.device.area + ' | ID: ' + payload.device.deviceId);
+        setDeviceInfo('Thiết bị mô phỏng: ' + payload.device.name + ' | Địa bàn: ' + payload.device.area + ' | MAC: ' + (payload.device.macAddress || 'Chưa có'));
         return;
       }
 
