@@ -258,6 +258,11 @@ Chạy SQL trong Supabase SQL Editor theo thứ tự:
 backend-api/supabase.sql
 ```
 
+Nếu Supabase/PostgREST vẫn báo thiếu cột sau khi chạy SQL, reload schema cache trong SQL Editor:
+```sql
+notify pgrst, 'reload schema';
+```
+
 ### 4. Chạy backend
 
 ```bash

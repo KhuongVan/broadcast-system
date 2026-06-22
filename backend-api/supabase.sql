@@ -219,6 +219,52 @@ on live_broadcast_sessions(started_at desc);
 create index if not exists idx_live_broadcast_sessions_status
 on live_broadcast_sessions(status);
 
+create table if not exists emergency_sources (
+  source_id uuid primary key default gen_random_uuid(),
+  name text not null,
+  url text not null,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_emergency_sources_sort
+on emergency_sources(sort_order asc, created_at asc);
+
+create table if not exists emergency_broadcast_sessions (
+  session_id uuid primary key default gen_random_uuid(),
+  source_id uuid references emergency_sources(source_id) on delete set null,
+  source_name text not null,
+  source_url text not null,
+  target_device_ids jsonb not null default '[]'::jsonb,
+  target_label text not null,
+  duration_minutes int not null,
+  started_by text,
+  started_at timestamptz not null default now(),
+  scheduled_end_at timestamptz not null,
+  ended_at timestamptz,
+  status text not null default 'ACTIVE' check (status in ('ACTIVE', 'FINISHED', 'CANCELLED')),
+  commune_id uuid references communes(commune_id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table emergency_broadcast_sessions
+add column if not exists commune_id uuid references communes(commune_id) on delete restrict;
+
+update emergency_broadcast_sessions
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
+
+create index if not exists idx_emergency_broadcast_sessions_commune_id
+on emergency_broadcast_sessions(commune_id);
+
+create index if not exists idx_emergency_broadcast_sessions_status
+on emergency_broadcast_sessions(status);
+
+create index if not exists idx_emergency_broadcast_sessions_started_at
+on emergency_broadcast_sessions(started_at desc);
+
 create table if not exists devices (
   device_id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -612,12 +658,16 @@ on device_schedule_assignments(schedule_group_id);
 create index if not exists idx_device_schedule_assignments_schedule_id
 on device_schedule_assignments(schedule_id);
 
-insert into devices (device_id, name, mac_address, area, connection_type, online, last_seen_at, play_allowed, play_status, latitude, longitude)
+insert into devices (device_id, name, mac_address, commune_id, area, connection_type, online, last_seen_at, play_allowed, play_status, latitude, longitude)
 values
-  ('11111111-1111-1111-1111-111111111111', 'Loa Thôn 1', '22:22:E5:6C:16:F4', 'Thôn 1', '4G', true, now() - interval '2 minutes', true, 'IDLE', 11.0168, 106.6293),
-  ('22222222-2222-2222-2222-222222222222', 'Loa Thôn 5', '22:22:60:29:5D:E3', 'Thôn 5', 'LAN', true, now() - interval '8 minutes', true, 'IDLE', 10.9804, 106.6519),
-  ('33333333-3333-3333-3333-333333333333', 'Loa Thôn 9', '22:22:9A:47:10:B8', 'Thôn 9', '4G', false, now() - interval '45 minutes', false, 'STOPPED', 10.9488, 106.6127)
+  ('11111111-1111-1111-1111-111111111111', 'Loa Thôn 1', '22:22:E5:6C:16:F4', '00000000-0000-0000-0000-000000000001', 'Thôn 1', '4G', true, now() - interval '2 minutes', true, 'IDLE', 11.0168, 106.6293),
+  ('22222222-2222-2222-2222-222222222222', 'Loa Thôn 5', '22:22:60:29:5D:E3', '00000000-0000-0000-0000-000000000001', 'Thôn 5', 'LAN', true, now() - interval '8 minutes', true, 'IDLE', 10.9804, 106.6519),
+  ('33333333-3333-3333-3333-333333333333', 'Loa Thôn 9', '22:22:9A:47:10:B8', '00000000-0000-0000-0000-000000000001', 'Thôn 9', '4G', false, now() - interval '45 minutes', false, 'STOPPED', 10.9488, 106.6127)
 on conflict (device_id) do nothing;
+
+update devices
+set commune_id = '00000000-0000-0000-0000-000000000001'
+where commune_id is null;
 
 insert into broadcast_schedule_groups (schedule_group_id, name, enabled)
 values

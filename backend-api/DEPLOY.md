@@ -5,6 +5,7 @@
 1. Cai Docker va Docker Compose plugin.
 2. Tao Supabase private bucket `broadcast-audio`.
 3. Chay SQL trong `supabase.sql` tren Supabase SQL Editor.
+   Neu Supabase/PostgREST van bao thieu cot sau khi chay SQL, chay them `notify pgrst, 'reload schema';` trong SQL Editor de reload schema cache.
 4. Tao file `backend-api/.env` tu `backend-api/.env.example` va dien `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`.
 5. Copy source len server.
 6. Trong source tong cua project, chay:
