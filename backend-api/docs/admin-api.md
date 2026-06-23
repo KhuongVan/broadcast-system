@@ -434,6 +434,7 @@ Schedule input:
   "playlistId": "uuid",
   "fileId": null,
   "fileMode": "PLAYLIST",
+  "selectedPlaylistItemIds": [],
   "rtspUrl": null,
   "startDate": "2026-06-05",
   "startTime": "06:00",
@@ -448,7 +449,8 @@ Allowed values:
 
 - `sourceType`: `FILE | RTSP`
 - `priority`: optional legacy field, defaults to `NORMAL` for schedules created by the admin UI.
-- `fileMode`: `PLAYLIST | SINGLE_FILE`
+- `fileMode`: `PLAYLIST | SELECTED_FILES | SINGLE_FILE`. `SINGLE_FILE` chỉ giữ để tương thích lịch cũ; UI mới dùng `SELECTED_FILES` khi chọn một hoặc nhiều file trong playlist.
+- `selectedPlaylistItemIds`: mảng `playlistItemId` khi `fileMode=SELECTED_FILES`; backend phát theo thứ tự playlist gốc và chỉ nhận item thuộc `playlistId`.
 - `repeatType`: `ONCE | DAILY | WEEKLY | MONTHLY`
 - `repeatCount`: integer `0..30`, chỉ áp dụng cho `sourceType = FILE`. `0` nghĩa là không phát lại thêm; RTSP/HLS luôn lưu `0`.
 
@@ -517,6 +519,7 @@ Response:
       "playlistId": "uuid",
       "fileId": null,
       "fileMode": "PLAYLIST",
+      "selectedPlaylistItemIds": [],
       "rtspUrl": null,
       "startDate": "2026-06-05",
       "startTime": "06:00",

@@ -23,6 +23,7 @@ const emptyProgramForm: ScheduleInput = {
   playlistId: null,
   fileId: null,
   fileMode: null,
+  selectedPlaylistItemIds: [],
   rtspUrl: '',
   startDate: today,
   startTime: '06:00',
@@ -80,6 +81,11 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   const calendarDays = useMemo(() => getCalendarDays(calendarDate, calendarMode), [calendarDate, calendarMode]);
   const occurrences = useMemo(() => buildOccurrences(sortedPrograms, calendarDays), [calendarDays, sortedPrograms]);
   const rtspPrograms = useMemo(() => programs.filter((schedule) => schedule.sourceType === 'RTSP'), [programs]);
+  const selectedPlaylist = useMemo(
+    () => playlists.find((playlist) => playlist.playlistId === programForm.playlistId) || null,
+    [playlists, programForm.playlistId],
+  );
+  const selectedPlaylistItemIds = programForm.selectedPlaylistItemIds || [];
 
   async function load(preferredGroupId?: string) {
     setLoading(true);
@@ -232,6 +238,11 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
   }
 
   function editProgram(schedule: Schedule) {
+    const schedulePlaylist = playlists.find((playlist) => playlist.playlistId === schedule.playlistId) || null;
+    const legacySingleFileItemId =
+      schedule.fileMode === 'SINGLE_FILE' && schedule.fileId
+        ? schedulePlaylist?.items.find((item) => item.fileId === schedule.fileId)?.playlistItemId
+        : null;
     setEditingProgramId(schedule.scheduleId);
     setTestResult('');
     setProgramForm({
@@ -240,8 +251,11 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
       sourceType: schedule.sourceType,
       priority: schedule.priority,
       playlistId: schedule.playlistId,
-      fileId: schedule.fileId,
-      fileMode: schedule.fileMode,
+      fileId: null,
+      fileMode: schedule.fileMode === 'SINGLE_FILE' ? 'SELECTED_FILES' : schedule.fileMode,
+      selectedPlaylistItemIds: schedule.fileMode === 'SINGLE_FILE'
+        ? legacySingleFileItemId ? [legacySingleFileItemId] : []
+        : schedule.selectedPlaylistItemIds || [],
       rtspUrl: schedule.rtspUrl,
       startDate: schedule.startDate,
       startTime: schedule.startTime.slice(0, 5),
@@ -267,16 +281,34 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
         next.playlistId = null;
         next.fileId = null;
         next.fileMode = null;
+        next.selectedPlaylistItemIds = [];
         next.repeatCount = 0;
       }
       if (key === 'sourceType' && value === 'FILE') {
         next.fileMode = next.fileMode || 'PLAYLIST';
         next.rtspUrl = null;
       }
+      if (key === 'playlistId') {
+        next.fileId = null;
+        next.selectedPlaylistItemIds = [];
+      }
       if (key === 'fileMode' && value === 'PLAYLIST') {
         next.fileId = null;
+        next.selectedPlaylistItemIds = [];
       }
       return next;
+    });
+  }
+
+  function toggleSelectedPlaylistItem(playlistItemId: string) {
+    setProgramForm((current) => {
+      const selectedIds = new Set(current.selectedPlaylistItemIds || []);
+      if (selectedIds.has(playlistItemId)) {
+        selectedIds.delete(playlistItemId);
+      } else {
+        selectedIds.add(playlistItemId);
+      }
+      return { ...current, selectedPlaylistItemIds: Array.from(selectedIds), fileId: null };
     });
   }
 
@@ -566,19 +598,26 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
                     Chế độ file
                     <select value={programForm.fileMode || 'PLAYLIST'} onChange={(event) => updateProgram('fileMode', event.target.value as ScheduleInput['fileMode'])}>
                       <option value="PLAYLIST">Phát cả playlist</option>
-                      <option value="SINGLE_FILE">Một file trong playlist</option>
+                      <option value="SELECTED_FILES">Chọn file trong playlist</option>
                     </select>
                   </label>
-                  {programForm.fileMode === 'SINGLE_FILE' ? (
-                    <label>
-                      File
-                      <select value={programForm.fileId || ''} onChange={(event) => updateProgram('fileId', event.target.value || null)} required>
-                        <option value="">Chọn file</option>
-                        {files.map((file) => <option key={file.fileId} value={file.fileId}>{file.originalName}</option>)}
-                      </select>
-                    </label>
-                  ) : null}
                 </div>
+                {programForm.fileMode === 'SELECTED_FILES' ? (
+                  <div className="playlist-file-list schedule-file-checklist">
+                    {selectedPlaylist?.items.length ? selectedPlaylist.items.map((item) => (
+                      <label className="check-row playlist-file-row" key={item.playlistItemId}>
+                        <input
+                          checked={selectedPlaylistItemIds.includes(item.playlistItemId)}
+                          onChange={() => toggleSelectedPlaylistItem(item.playlistItemId)}
+                          type="checkbox"
+                        />
+                        <span>{item.file.originalName}</span>
+                      </label>
+                    )) : (
+                      <div className="state compact">{selectedPlaylist ? 'Playlist chưa có file.' : 'Vui lòng chọn playlist trước.'}</div>
+                    )}
+                  </div>
+                ) : null}
               </>
             )}
 
@@ -612,7 +651,7 @@ export function SchedulesView({ embedded = false }: SchedulesViewProps) {
               <span>Bật chương trình</span>
             </label>
             <div className="row-actions">
-              <button className="primary" disabled={saving || !programForm.name.trim()}>{editingProgramId ? 'Lưu chương trình' : 'Tạo chương trình'}</button>
+              <button className="primary" disabled={saving || !programForm.name.trim() || (programForm.fileMode === 'SELECTED_FILES' && selectedPlaylistItemIds.length === 0)}>{editingProgramId ? 'Lưu chương trình' : 'Tạo chương trình'}</button>
               {programForm.sourceType === 'RTSP' ? <button className="ghost" disabled={saving || !programForm.rtspUrl?.trim()} onClick={() => void testRtsp()} type="button">Test URL</button> : null}
               <button className="ghost" onClick={closeProgramModal} type="button">Hủy</button>
             </div>
@@ -699,7 +738,7 @@ function Calendar({ days, mode, occurrences, onCreate, onEdit }: {
 
 function normalizeForm(form: ScheduleInput): ScheduleInput {
   if (form.sourceType === 'RTSP') {
-    return { ...form, priority: 'NORMAL', playlistId: null, fileId: null, fileMode: null, rtspUrl: form.rtspUrl?.trim() || '', repeatCount: 0 };
+    return { ...form, priority: 'NORMAL', playlistId: null, fileId: null, fileMode: null, selectedPlaylistItemIds: [], rtspUrl: form.rtspUrl?.trim() || '', repeatCount: 0 };
   }
 
   return {
@@ -707,7 +746,8 @@ function normalizeForm(form: ScheduleInput): ScheduleInput {
     priority: 'NORMAL',
     rtspUrl: null,
     fileMode: form.fileMode || 'PLAYLIST',
-    fileId: form.fileMode === 'SINGLE_FILE' ? form.fileId : null,
+    fileId: null,
+    selectedPlaylistItemIds: form.fileMode === 'SELECTED_FILES' ? form.selectedPlaylistItemIds || [] : [],
     repeatCount: Math.max(0, Math.min(30, Number(form.repeatCount) || 0)),
   };
 }
@@ -768,6 +808,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 function sourceLabel(schedule: Schedule) {
   if (schedule.sourceType === 'RTSP') return 'RTSP/HLS';
+  if (schedule.fileMode === 'SELECTED_FILES') return 'File đã chọn';
   return schedule.fileMode === 'SINGLE_FILE' ? 'Một file' : 'Playlist';
 }
 

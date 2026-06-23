@@ -100,7 +100,7 @@ type BroadcastScheduleRow = {
   priority: 'NORMAL' | 'EMERGENCY';
   playlist_id: string | null;
   file_id: string | null;
-  file_mode: 'PLAYLIST' | 'SINGLE_FILE' | null;
+  file_mode: 'PLAYLIST' | 'SINGLE_FILE' | 'SELECTED_FILES' | null;
   rtsp_url: string | null;
   start_date: string;
   start_time: string;
@@ -111,6 +111,12 @@ type BroadcastScheduleRow = {
   commune_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type SchedulePlaylistItemRow = {
+  schedule_id: string;
+  playlist_item_id: string;
+  created_at: string;
 };
 
 type BroadcastScheduleGroupRow = {
@@ -1479,7 +1485,7 @@ export class StorageService {
       throw new Error(`Khong doc duoc broadcast_schedules: ${error.message}`);
     }
 
-    const schedules = ((data || []) as BroadcastScheduleRow[]).map((row) => this.toScheduleRecord(row));
+    const schedules = await Promise.all(((data || []) as BroadcastScheduleRow[]).map((row) => this.toScheduleRecord(row)));
     if (!options.onlyRunnableGroups) return schedules;
 
     const groupIds = Array.from(new Set(schedules.map((schedule) => schedule.scheduleGroupId).filter(Boolean))) as string[];
@@ -1587,7 +1593,11 @@ export class StorageService {
       throw new Error(`Khong tao duoc lich phat: ${error.message}`);
     }
 
-    return this.toScheduleRecord(data as BroadcastScheduleRow);
+    const schedule = await this.toScheduleRecord(data as BroadcastScheduleRow);
+    await this.replaceSchedulePlaylistItems(schedule.scheduleId, input.selectedPlaylistItemIds);
+    const refreshed = await this.getSchedule(schedule.scheduleId, communeId);
+    if (!refreshed) throw new Error('Khong tim thay lich phat sau khi tao.');
+    return refreshed;
   }
 
   async updateSchedule(scheduleId: string, input: Required<ScheduleInput>, communeId?: string | null) {
@@ -1603,7 +1613,10 @@ export class StorageService {
       throw new Error(`Khong cap nhat duoc lich phat: ${error.message}`);
     }
 
-    return data ? this.toScheduleRecord(data as BroadcastScheduleRow) : null;
+    if (!data) return null;
+    const schedule = await this.toScheduleRecord(data as BroadcastScheduleRow);
+    await this.replaceSchedulePlaylistItems(schedule.scheduleId, input.selectedPlaylistItemIds);
+    return this.getSchedule(schedule.scheduleId, communeId);
   }
 
   async deleteSchedule(scheduleId: string, communeId?: string | null) {
@@ -2526,7 +2539,7 @@ export class StorageService {
 
     for (const schedule of schedules) {
       playlistsByScheduleId[schedule.scheduleId] = schedule.sourceType === 'FILE' && schedule.playlistId
-        ? await this.getPlaylist(schedule.playlistId)
+        ? await this.getSchedulePlaylist(schedule)
         : null;
       filesByScheduleId[schedule.scheduleId] = schedule.sourceType === 'FILE' && schedule.fileId
         ? await this.getFile(schedule.fileId)
@@ -2545,6 +2558,24 @@ export class StorageService {
       schedules,
       playlistsByScheduleId,
       filesByScheduleId,
+    };
+  }
+
+  async getSchedulePlaylist(schedule: BroadcastScheduleRecord): Promise<PlaylistRecord | null> {
+    if (!schedule.playlistId) return null;
+    const playlist = await this.getPlaylist(schedule.playlistId);
+    if (!playlist) return null;
+    if (schedule.fileMode !== 'SELECTED_FILES' || schedule.selectedPlaylistItemIds.length === 0) {
+      return playlist;
+    }
+
+    const selectedIds = new Set(schedule.selectedPlaylistItemIds);
+    const items = playlist.items.filter((item) => selectedIds.has(item.playlistItemId));
+    return {
+      ...playlist,
+      totalFiles: items.length,
+      totalSize: items.reduce((total, item) => total + item.file.size, 0),
+      items,
     };
   }
 
@@ -2621,7 +2652,42 @@ export class StorageService {
     };
   }
 
-  private toScheduleRecord(row: BroadcastScheduleRow): BroadcastScheduleRecord {
+  private async listScheduleSelectedPlaylistItemIds(scheduleId: string): Promise<string[]> {
+    const { data, error } = await this.supabase
+      .from('broadcast_schedule_playlist_items')
+      .select('playlist_item_id')
+      .eq('schedule_id', scheduleId);
+
+    if (error) {
+      throw new Error(`Khong doc duoc file da chon trong lich phat: ${error.message}`);
+    }
+
+    return ((data || []) as Pick<SchedulePlaylistItemRow, 'playlist_item_id'>[]).map((row) => row.playlist_item_id);
+  }
+
+  private async replaceSchedulePlaylistItems(scheduleId: string, playlistItemIds: string[]) {
+    const { error: deleteError } = await this.supabase
+      .from('broadcast_schedule_playlist_items')
+      .delete()
+      .eq('schedule_id', scheduleId);
+
+    if (deleteError) {
+      throw new Error(`Khong cap nhat file da chon trong lich phat: ${deleteError.message}`);
+    }
+
+    if (!playlistItemIds.length) return;
+
+    const rows = playlistItemIds.map((playlistItemId) => ({
+      schedule_id: scheduleId,
+      playlist_item_id: playlistItemId,
+    }));
+    const { error } = await this.supabase.from('broadcast_schedule_playlist_items').insert(rows);
+    if (error) {
+      throw new Error(`Khong luu file da chon trong lich phat: ${error.message}`);
+    }
+  }
+
+  private async toScheduleRecord(row: BroadcastScheduleRow): Promise<BroadcastScheduleRecord> {
     return {
       scheduleId: row.schedule_id,
       scheduleGroupId: row.schedule_group_id,
@@ -2631,6 +2697,7 @@ export class StorageService {
       playlistId: row.playlist_id,
       fileId: row.file_id,
       fileMode: row.file_mode,
+      selectedPlaylistItemIds: await this.listScheduleSelectedPlaylistItemIds(row.schedule_id),
       rtspUrl: row.rtsp_url,
       startDate: row.start_date,
       startTime: row.start_time.slice(0, 5),

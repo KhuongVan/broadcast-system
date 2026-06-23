@@ -743,7 +743,7 @@ export class BroadcastGateway implements OnGatewayConnection, OnModuleInit, OnMo
     }
 
     if (!schedule.playlistId) throw new Error('Lich phat chua chon danh sach phat.');
-    const playlist = await this.playlists.getPlaylist(schedule.playlistId);
+    const playlist = await this.storage.getSchedulePlaylist(schedule);
     if (!playlist || playlist.items.length === 0) throw new Error('Danh sach phat trong lich dang rong.');
 
     const shouldResume =

@@ -719,6 +719,16 @@ audio {
   border-top: 0;
 }
 
+.schedule-file-checklist .playlist-file-row {
+  cursor: pointer;
+  justify-content: flex-start;
+}
+
+.schedule-file-checklist .playlist-file-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .split-layout {
   display: grid;
   gap: 18px;

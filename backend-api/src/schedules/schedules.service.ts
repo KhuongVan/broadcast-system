@@ -65,6 +65,7 @@ export class SchedulesService {
       scheduleGroupId = group.scheduleGroupId;
     }
     const schedule = this.normalizeInput({ ...input, scheduleGroupId });
+    await this.ensureSelectedPlaylistItems(schedule, communeId);
     await this.ensureNoPriorityConflict(schedule, undefined, communeId);
     return this.storage.createSchedule(schedule, communeId);
   }
@@ -81,6 +82,7 @@ export class SchedulesService {
     if (!scheduleGroupId) throw new NotFoundException('Khong tim thay lich phat.');
     await this.getScheduleGroup(scheduleGroupId, user);
     const schedule = this.normalizeInput({ ...current, ...input, scheduleGroupId });
+    await this.ensureSelectedPlaylistItems(schedule, communeId);
     await this.ensureNoPriorityConflict(schedule, scheduleId, communeId);
     const updated = await this.storage.updateSchedule(scheduleId, schedule, communeId);
     if (!updated) throw new NotFoundException('Khong tim thay lich phat.');
@@ -138,6 +140,9 @@ export class SchedulesService {
     const fileMode = sourceType === 'FILE' ? input.fileMode || 'PLAYLIST' : null;
     const playlistId = sourceType === 'FILE' ? input.playlistId || null : null;
     const fileId = sourceType === 'FILE' && fileMode === 'SINGLE_FILE' ? input.fileId || null : null;
+    const selectedPlaylistItemIds = sourceType === 'FILE' && fileMode === 'SELECTED_FILES'
+      ? this.normalizeSelectedPlaylistItemIds(input.selectedPlaylistItemIds)
+      : [];
     const rtspUrl = sourceType === 'RTSP' ? (input.rtspUrl || '').trim() : null;
     const repeatCount = sourceType === 'FILE' ? this.normalizeRepeatCount(input.repeatCount) : 0;
 
@@ -151,8 +156,14 @@ export class SchedulesService {
       throw new BadRequestException('Giờ kết thúc phải lớn hơn giờ bắt đầu.');
     }
     if (sourceType === 'FILE' && !playlistId) throw new BadRequestException('Vui lòng chọn danh sách phát.');
+    if (sourceType === 'FILE' && !['PLAYLIST', 'SINGLE_FILE', 'SELECTED_FILES'].includes(fileMode || '')) {
+      throw new BadRequestException('Chế độ file không hợp lệ.');
+    }
     if (sourceType === 'FILE' && fileMode === 'SINGLE_FILE' && !fileId) {
       throw new BadRequestException('Vui lòng chọn file cần phát.');
+    }
+    if (sourceType === 'FILE' && fileMode === 'SELECTED_FILES' && selectedPlaylistItemIds.length === 0) {
+      throw new BadRequestException('Vui lòng chọn ít nhất một file trong danh sách phát.');
     }
     if (sourceType === 'RTSP' && (!rtspUrl || !this.isSupportedStreamUrl(rtspUrl))) {
       throw new BadRequestException('Stream URL phải bắt đầu bằng rtsp://, http:// hoặc https://');
@@ -166,6 +177,7 @@ export class SchedulesService {
       playlistId,
       fileId,
       fileMode,
+      selectedPlaylistItemIds,
       rtspUrl,
       startDate,
       startTime,
@@ -174,6 +186,26 @@ export class SchedulesService {
       repeatCount,
       enabled,
     };
+  }
+
+  private normalizeSelectedPlaylistItemIds(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    const ids = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    return Array.from(new Set(ids));
+  }
+
+  private async ensureSelectedPlaylistItems(schedule: Required<ScheduleInput>, communeId?: string | null) {
+    if (schedule.sourceType !== 'FILE' || schedule.fileMode !== 'SELECTED_FILES') return;
+    if (!schedule.playlistId) throw new BadRequestException('Vui lòng chọn danh sách phát.');
+
+    const playlist = await this.storage.getPlaylist(schedule.playlistId, communeId);
+    if (!playlist) throw new BadRequestException('Không tìm thấy danh sách phát.');
+
+    const playlistItemIds = new Set(playlist.items.map((item) => item.playlistItemId));
+    const invalidItemId = schedule.selectedPlaylistItemIds.find((playlistItemId) => !playlistItemIds.has(playlistItemId));
+    if (invalidItemId) {
+      throw new BadRequestException('File đã chọn không thuộc danh sách phát.');
+    }
   }
 
   private normalizeRepeatCount(value: unknown) {

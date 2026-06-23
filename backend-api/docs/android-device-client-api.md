@@ -268,6 +268,7 @@ Response khi co nhieu lich:
       "playlistId": null,
       "fileId": null,
       "fileMode": null,
+      "selectedPlaylistItemIds": [],
       "rtspUrl": "https://example.com/live/index.m3u8",
       "startDate": "2026-06-05",
       "startTime": "06:00",
@@ -293,6 +294,7 @@ Notes:
 - Lich phat tu dong tren Socket.IO cung chi phat den cac thiet bi co assignment va dang `playAllowed=true`; lich chua gan thiet bi se bi bo qua.
 - Voi `sourceType=RTSP`, app dung `schedule.rtspUrl`.
 - Voi `sourceType=FILE` va `fileMode=PLAYLIST`, app lay playlist tai `playlistsByScheduleId[scheduleId]`.
+- Voi `sourceType=FILE` va `fileMode=SELECTED_FILES`, app cung lay playlist tai `playlistsByScheduleId[scheduleId]`; backend da loc playlist nay chi con cac file admin tick chon va giu thu tu playlist goc.
 - Voi `sourceType=FILE` va `fileMode=SINGLE_FILE`, app lay file tai `filesByScheduleId[scheduleId]`.
 - `repeatCount` la so lan phat lai them cho lich `FILE`, hop le tu `0` den `30`; RTSP/HLS bo qua va nhan `0`.
 - Cac `url` la signed URL, co thoi han theo backend config `SIGNED_URL_TTL_SECONDS`.

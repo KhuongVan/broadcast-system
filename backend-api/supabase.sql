@@ -104,7 +104,7 @@ create table if not exists broadcast_schedules (
   priority text not null default 'NORMAL' check (priority in ('NORMAL', 'EMERGENCY')),
   playlist_id uuid references playlists(playlist_id) on delete set null,
   file_id uuid references audio_files(file_id) on delete set null,
-  file_mode text check (file_mode in ('PLAYLIST', 'SINGLE_FILE')),
+  file_mode text check (file_mode in ('PLAYLIST', 'SINGLE_FILE', 'SELECTED_FILES')),
   rtsp_url text,
   start_date date not null,
   start_time time not null,
@@ -122,6 +122,35 @@ create table if not exists broadcast_schedules (
     (source_type = 'RTSP' and rtsp_url is not null)
   )
 );
+
+create table if not exists broadcast_schedule_playlist_items (
+  schedule_id uuid not null references broadcast_schedules(schedule_id) on delete cascade,
+  playlist_item_id uuid not null references playlist_items(playlist_item_id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (schedule_id, playlist_item_id)
+);
+
+create index if not exists idx_broadcast_schedule_playlist_items_schedule_id
+on broadcast_schedule_playlist_items(schedule_id);
+
+create index if not exists idx_broadcast_schedule_playlist_items_playlist_item_id
+on broadcast_schedule_playlist_items(playlist_item_id);
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'broadcast_schedules_file_mode_check'
+  ) then
+    alter table broadcast_schedules
+    drop constraint broadcast_schedules_file_mode_check;
+  end if;
+
+  alter table broadcast_schedules
+  add constraint broadcast_schedules_file_mode_check
+  check (file_mode in ('PLAYLIST', 'SINGLE_FILE', 'SELECTED_FILES'));
+end $$;
 
 alter table broadcast_schedules
 add column if not exists schedule_group_id uuid references broadcast_schedule_groups(schedule_group_id) on delete cascade;

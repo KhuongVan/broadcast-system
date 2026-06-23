@@ -1419,6 +1419,7 @@ function formatScheduleWindow(schedule: Schedule) {
 
 function getScheduleSourceLabel(schedule: Schedule) {
   if (schedule.sourceType === 'RTSP') return 'RTSP/HLS';
+  if (schedule.fileMode === 'SELECTED_FILES') return 'File đã chọn';
   return schedule.fileMode === 'SINGLE_FILE' ? 'File' : 'Danh sách phát';
 }
 

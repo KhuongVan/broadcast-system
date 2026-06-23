@@ -62,7 +62,7 @@ export type Playlist = {
 export type ScheduleSourceType = 'FILE' | 'RTSP';
 export type SchedulePriority = 'NORMAL' | 'EMERGENCY';
 export type ScheduleRepeatType = 'ONCE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
-export type ScheduleFileMode = 'PLAYLIST' | 'SINGLE_FILE';
+export type ScheduleFileMode = 'PLAYLIST' | 'SINGLE_FILE' | 'SELECTED_FILES';
 
 export type Schedule = {
   scheduleId: string;
@@ -73,6 +73,7 @@ export type Schedule = {
   playlistId: string | null;
   fileId: string | null;
   fileMode: ScheduleFileMode | null;
+  selectedPlaylistItemIds: string[];
   rtspUrl: string | null;
   startDate: string;
   startTime: string;
@@ -107,6 +108,7 @@ export type ScheduleInput = {
   playlistId: string | null;
   fileId: string | null;
   fileMode: ScheduleFileMode | null;
+  selectedPlaylistItemIds: string[];
   rtspUrl: string | null;
   startDate: string;
   startTime: string;
