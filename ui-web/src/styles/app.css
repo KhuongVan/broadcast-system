@@ -4974,6 +4974,37 @@ tbody tr:hover td {
   gap: 16px;
 }
 
+.system-admin-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.system-admin-summary > div {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+}
+
+.system-admin-summary span,
+.system-admin-summary small,
+.system-admin-token-box span,
+.system-admin-token-box small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.system-admin-summary strong {
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1;
+}
+
 .inline-form,
 .admin-user-form {
   display: grid;
@@ -5027,4 +5058,12 @@ tbody tr:hover td {
 .token-box code {
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.system-admin-modal-form {
+  margin: 0;
+}
+
+.system-admin-token-box {
+  margin-top: 16px;
 }
